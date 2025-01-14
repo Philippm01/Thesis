@@ -11,7 +11,7 @@ CLIENT_INTERFACE="eth0"
 SERVER_INTERFACE="eth0"
 
 AIOQUIC_PORT="4000"
-LSQUIC_PORT=""
+LSQUIC_PORT="4001"
 
 SERVER_AIQOUIC_PATH="/home/philipp/aioquic_base"
 
@@ -103,19 +103,32 @@ simulate_flood(){
     local decrypted_file="packet_capture/flood_con:"$min_con"-"$max_con"_time:"$runtime"_decrypted.pcap"
 
     #-----------------------------------------------Server Setup and Capturing---------------------------------------------
-    echo "Starting Aioquic base server on $SERVER_IP..."
+    echo "Starting Aioquicserver on $SERVER_IP..."
     SERVER_COMMAND="nohup bash -c 'cd /home/philipp/aioquic_base && source venv/bin/activate && python3 examples/http3_server.py --certificate cert.pem --private-key key.pem --host $SERVER_IP --port $AIOQUIC_PORT -l aioquiclog ' > server.log 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$SERVER_COMMAND"
     kill_server $runtime $AIOQUIC_PORT
-    echo "Capturing traffic on the server"
-    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
+
+    echo "Starting LSQUIC server on $SERVER_IP..."
+    SERVER_COMMAND="nohup bash -c 'cd /home/philipp/lsquic/bin && ./http_server -c $SERVER_IP,fullchain.pem,privkey.pem -s 0.0.0.0:$LSQUIC_PORT -r /home/philipp/www/ -G /home/philipp/lsquic/bin/keys' > server.log 2>&1 &"
+    execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$SERVER_COMMAND"
+    kill_server $runtime $LSQUIC_PORT
+
+    echo "Capturing traffic on Port $LSQUIC_PORT and $AIQOUIC_PORT"
+    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$CAPTURE_COMMAND"
 
     #-----------------------------------------------Client traffic generation----------------------------------------------
     echo "Starting Flooding Client"
-    CLIENT_COMMAND="nohup bash -c 'cd /home/philipp/aioquic_flood && source venv/bin/activate && ./flood.sh $min_con $max_con $runtime $url' > client.log 2>&1 &"
-    execute_ssh_command "$USER_CLIENT" "$CLIENT_IP" "$PASSWORD_CLIENT" "$CLIENT_COMMAND"
-    sleep $runtime
+    FLOOD_COMMAND="nohup bash -c 'cd /home/philipp/aioquic_flood && source venv/bin/activate && ./flood.sh $min_con $max_con $runtime $url' > client.log 2>&1 &"
+    execute_ssh_command "$USER_CLIENT" "$CLIENT_IP" "$PASSWORD_CLIENT" "$FLOOD_COMMAND"
+
+    echo "Starting normal Client"
+    BASE_CLIENT_COMMAND="nohup bash -c 'cd /home/philipp/aioquic_base && source venv/bin/activate && ./basesim.sh 4 5 $runtime 2 3 https://192.168.0.103:4000/index.html' > client.log 2>&1 &"
+    execute_ssh_command "$USER_CLIENT" "$CLIENT_IP" "$PASSWORD_CLIENT" "$BASE_CLIENT_COMMAND"
+    
+    #TODO: Make LSQUIC client
+
+    sleep $runtime #All processes are running in the background
 
     #--------------------------------------------------------Analysis-------------------------------------------------------
     echo "Decryption of traffic"
@@ -123,6 +136,16 @@ simulate_flood(){
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /home/philipp/aioquic_base/aioquiclog"
     cat aioquiclog_temp >> "$SECRETS_FILE"
     rm aioquiclog_temp
+
+    echo "Formatting LSQUIC keys"
+    FORMAT_KEYS="cd /home/philipp/lsquic/bin && ./getlsquickeys.sh"
+    execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$FORMAT_KEYS"
+    sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/home/philipp/lsquic/bin/final_keys.txt" ./lsquic_temp
+    cat lsquic_temp >> "$SECRETS_FILE"
+    rm lsquic_temp
+
+    #TODO: Check key file and if decryption worked
+
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "sudo chown $USER_SERVER:$USER_SERVER /tmp/$capture_file"
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
@@ -145,4 +168,4 @@ echo "test"
 }
 
 
-simulate_flood 10 30 30
+simulate_flood 10 15 20
