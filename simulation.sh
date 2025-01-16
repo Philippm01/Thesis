@@ -102,7 +102,7 @@ simulate_flood(){
     local url_l=https://$SERVER_IP:$LSQUIC_PORT/index.html
     local SECRETS_FILE="secrets.txt"
     local capture_file="simulation_capture.pcap"
-    local decrypted_file="packet_capture/flood_con:"$min_con"-"$max_con"_time:"$runtime"_decrypted.pcap"
+    local result_file="packet_capture/flood_con:"$min_con"-"$max_con"_time:"$runtime".pcap"
 
     #-----------------------------------------------Server Setup and Capturing---------------------------------------------
     echo "Starting Aioquicserver on $SERVER_IP..."
@@ -147,13 +147,14 @@ simulate_flood(){
     rm lsquic_temp
 
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "sudo chown $USER_SERVER:$USER_SERVER /tmp/$capture_file"
-    sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
+    sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/$capture_file
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $decrypted_file
-    #tshark -r $decrypted_file -o tls.keylog_file:$SECRETS_FILE -V > packet_capture/decrypted_output.txt
-    rm $SECRETS_FILE
-    rm ./packet_capture/$capture_file
-    echo "Traffic decryption successful"
+    
+    echo "Store capture and keys"
+    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
+    #tshark -r $decrypted_file -o tls.keylog_file:$SECRETS_FILE -V > packet_capture/decrypted_output.txt 
+    cp $SECRETS_FILE ./secrets_files/flood_con:"$min_con"-"$max_con"_time:"$runtime".txt
+    rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }   
 
 simulate_slowloris(){
@@ -166,7 +167,7 @@ simulate_slowloris(){
     local url_l=https://$SERVER_IP:$LSQUIC_PORT/index.html
     local SECRETS_FILE="secrets.txt"
     local capture_file="simulation_capture.pcap"
-    local decrypted_file="packet_capture/flood_con:"$min_con"-"$max_con"_time:"$runtime"_decrypted.pcap"
+    local result_file="packet_capture/slowloris_con:"$min_con"-"$max_con"_sleep:"$min_sleep"-"max_sleep"_time:"$runtime".pcap"
 
     #-----------------------------------------------Server Setup and Capturing---------------------------------------------
     echo "Starting Aioquicserver on $SERVER_IP..."
@@ -213,11 +214,12 @@ simulate_slowloris(){
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "sudo chown $USER_SERVER:$USER_SERVER /tmp/$capture_file"
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $decrypted_file
-    #tshark -r $decrypted_file -o tls.keylog_file:$SECRETS_FILE -V > packet_capture/decrypted_output.txt
-    rm $SECRETS_FILE
-    rm ./packet_capture/$capture_file
-    echo "Traffic decryption successful"
+    
+    echo "Store capture and keys"
+    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
+    #tshark -r $decrypted_file -o tls.keylog_file:$SECRETS_FILE -V > packet_capture/decrypted_output.txt 
+    cp $SECRETS_FILE ./secrets_files/slowloris_con:"$min_con"-"$max_con"_sleep:"$min_sleep"-"max_sleep"_time:"$runtime".txt
+    rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }   
 
 simulate_normal(){
@@ -226,7 +228,7 @@ simulate_normal(){
     local url_l=https://$SERVER_IP:$LSQUIC_PORT/index.html
     local SECRETS_FILE="secrets.txt"
     local capture_file="simulation_capture.pcap"
-    local decrypted_file="packet_capture/flood_con:"$min_con"-"$max_con"_time:"$runtime"_decrypted.pcap"
+    local result_file="packet_capture/normal_time:"$runtime"_decrypted.pcap"
 
     #-----------------------------------------------Server Setup and Capturing---------------------------------------------
     echo "Starting Aioquicserver on $SERVER_IP..."
@@ -269,19 +271,20 @@ simulate_normal(){
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "sudo chown $USER_SERVER:$USER_SERVER /tmp/$capture_file"
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $decrypted_file
-    #tshark -r $decrypted_file -o tls.keylog_file:$SECRETS_FILE -V > packet_capture/decrypted_output.txt
-    rm $SECRETS_FILE
-    rm ./packet_capture/$capture_file
-    echo "Traffic decryption successful"
+    
+    echo "Store capture and keys"
+    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
+    #tshark -r $decrypted_file -o tls.keylog_file:$SECRETS_FILE -V > packet_capture/decrypted_output.txt 
+    cp $SECRETS_FILE ./secrets_files/normal_time:"$runtime"_decrypted.txt
+    rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }   
 
 simulate_lsquic_http3(){
 echo "test"
 }
 
-simulate_flood 10 15 20
+#simulate_flood 10 15 20
 
-simulate_slowloris 10 14 20 2 4
+#simulate_slowloris 10 14 20 2 4
 
 simulate_normal 20
