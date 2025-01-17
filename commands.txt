@@ -1,0 +1,2 @@
+wireshark normal_time\:10_decrypted.pcap -o tls.keylog_file:/home/philipp/Documents/Thesis/secrets_files/normal_time:10_decrypted.txt
+
