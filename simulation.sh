@@ -283,8 +283,8 @@ simulate_lsquic_http3(){
 echo "test"
 }
 
-#simulate_flood 10 15 20
+simulate_flood 10 15 10
 
-#simulate_slowloris 10 14 20 2 4
+simulate_slowloris 10 14 10 2 4
 
-simulate_normal 20
+simulate_normal 10
