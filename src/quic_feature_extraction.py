@@ -17,9 +17,39 @@ case = extract_pcap_name(args.case)
 pcap_file = f'{base_dir}/packet_capture/{case}.pcap'
 keylog_file = f'{base_dir}/secrets_files/{case}.txt'
 
-
-
-
+def verify_decryption(pcap_file, keylog_file):
+    cap = pyshark.FileCapture(
+        pcap_file,
+        override_prefs={
+            'tls.keylog_file': keylog_file,
+        },
+        display_filter='quic'
+    )
+    
+    decrypted_count = 0
+    encrypted_count = 0
+    
+    for packet in cap:
+        try:
+            # Check for decrypted QUIC layer
+            if hasattr(packet, 'quic'):
+                if hasattr(packet.quic, 'payload'):
+                    decrypted_count += 1
+                else:
+                    encrypted_count += 1
+                    
+            # Check for HTTP3 layer
+            if hasattr(packet, 'http3'):
+                print(f"Found HTTP3 layer in packet {packet.number}")
+                return True
+                
+        except AttributeError:
+            encrypted_count += 1
+            
+    print(f"Decrypted packets: {decrypted_count}")
+    print(f"Encrypted packets: {encrypted_count}")
+    
+    return decrypted_count > 0
 
 cap = pyshark.FileCapture(
     pcap_file,
@@ -51,3 +81,11 @@ print(f"Test string: {case}")
 
 
 #TODO: Make the same for http3
+
+
+is_decrypted = verify_decryption(pcap_file, keylog_file)
+if not is_decrypted:
+    print("Warning: No decrypted packets found!")
+
+print(keylog_file)
+print(pcap_file)
