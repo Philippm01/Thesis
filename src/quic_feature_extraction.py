@@ -28,24 +28,24 @@ def verify_decryption(pcap_file, keylog_file):
     
     decrypted_count = 0
     encrypted_count = 0
+    quic_count = 0
+    http3_count = 0
     
     for packet in cap:
         try:
-            # Check for decrypted QUIC layer
             if hasattr(packet, 'quic'):
+                quic_count += 1
                 if hasattr(packet.quic, 'payload'):
                     decrypted_count += 1
                 else:
                     encrypted_count += 1
-                    
-            # Check for HTTP3 layer
             if hasattr(packet, 'http3'):
-                print(f"Found HTTP3 layer in packet {packet.number}")
+                http3_count += 1
                 
         except AttributeError:
             encrypted_count += 1
 
-    return decrypted_count, encrypted_count
+    return decrypted_count, encrypted_count, quic_count, http3_count
 
 cap = pyshark.FileCapture(
     pcap_file,
@@ -56,24 +56,52 @@ cap = pyshark.FileCapture(
     },
 )
 
-# Extract features from QUIC packets
+# Extract features from QUIC and HTTP3 frames
 for packet in cap:
     print(f"Packet Number: {packet.number}")
     print(f"Source IP: {packet.ip.src}")
     print(f"Destination IP: {packet.ip.dst}")
     print(f"Packet Length: {packet.length}")
+    print(f"Protocol: {packet.transport_layer}")
+    print(f"Arrival Time: {packet.frame_info.time}")
+    quic_frames = []
+    http3_frames = []
 
     if hasattr(packet, 'quic'):
-        print(f"QUIC Stream ID: {getattr(packet.quic, 'stream_id', 'N/A')}")
-        print(f"Frame Type: {getattr(packet.quic, 'frame_type', 'N/A')}")
-        if hasattr(packet.quic, 'payload'):
-            print(f"Payload (Decrypted): {packet.quic.payload}")
-        
+        for layer in packet.layers:
+            if layer.layer_name == 'quic':
+                quic_frame_info = [
+                    f"Connection number: {getattr(layer, 'connection_number', 'N/A')}",
+                    f"Packet Length: {getattr(layer, 'packet_length', 'N/A')}",
+                    f"Destination Connection ID: {getattr(layer, 'dcid', 'N/A')}",
+                    f"Source Connection ID: {getattr(layer, 'scid', 'N/A')}" if hasattr(layer, 'scid') else "",
+                    f"Packet number: {getattr(layer, 'packet_number', 'N/A')}",
+                    f"Length: {getattr(layer, 'length', 'N/A')}",
+                    f"Protected Payload: {getattr(layer, 'protected_payload', 'N/A')}" if hasattr(layer, 'protected_payload') else "",
+                    f"Payload: {getattr(layer, 'payload', 'N/A')}" if hasattr(layer, 'payload') else "",
+                    f"Frame Type: {getattr(layer, 'frame_type', 'N/A')}"
+                ]
+                quic_frames.append("\n".join(filter(None, quic_frame_info)))
+
     if hasattr(packet, 'http3'):
-        print("HTTP3 Layer Found:")
-        print(f"Stream Type: {getattr(packet.http3, 'stream_type', 'N/A')}")
-        print(f"Frame Type: {getattr(packet.http3, 'frame_type', 'N/A')}")
-        print(f"Frame Payload: {getattr(packet.http3, 'frame_payload', 'N/A')}")
+        for layer in packet.layers:
+            if layer.layer_name == 'http3':
+                http3_frame_info = [
+                    f"Frame Type: {getattr(layer, 'frame_type', 'N/A')}",
+                    f"Frame Length: {getattr(layer, 'frame_length', 'N/A')}",
+                    f"Frame Payload: {getattr(layer, 'frame_payload', 'N/A')}",
+                    f"Settings Max Table Capacity: {getattr(layer, 'settings_qpack_max_table_capacity', 'N/A')}" if hasattr(layer, 'settings_qpack_max_table_capacity') else ""
+                ]
+                http3_frames.append("\n".join(filter(None, http3_frame_info)))
+
+    if quic_frames:
+        print("QUIC Frames Found:")
+        print("\n\n".join(quic_frames))
+
+    if http3_frames:
+        print("HTTP3 Frames Found:")
+        print("\n\n".join(http3_frames))
+
     print('-' * 50)
 
 pcap_name = extract_pcap_name(pcap_file)
@@ -81,6 +109,8 @@ print(f"Extracted PCAP name: {pcap_name}")
 print(f"Test string: {case}")
 
 # Check if decryption is working
-decrypted_count, encrypted_count = verify_decryption(pcap_file, keylog_file)
+decrypted_count, encrypted_count, quic_count, http3_count = verify_decryption(pcap_file, keylog_file)
 print(f"Decrypted packets: {decrypted_count}")
 print(f"Encrypted packets: {encrypted_count}")
+print(f"QUIC packets: {quic_count}")
+print(f"HTTP3 packets: {http3_count}")
