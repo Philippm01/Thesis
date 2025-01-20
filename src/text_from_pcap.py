@@ -56,7 +56,6 @@ cap = pyshark.FileCapture(
     },
 )
 
-# Extract features from QUIC and HTTP3 frames
 for packet in cap:
     print(f"Packet Number: {packet.number}")
     print(f"Source IP: {packet.ip.src}")
@@ -108,7 +107,6 @@ pcap_name = extract_pcap_name(pcap_file)
 print(f"Extracted PCAP name: {pcap_name}")
 print(f"Test string: {case}")
 
-# Check if decryption is working
 decrypted_count, encrypted_count, quic_count, http3_count = verify_decryption(pcap_file, keylog_file)
 print(f"Decrypted packets: {decrypted_count}")
 print(f"Encrypted packets: {encrypted_count}")
