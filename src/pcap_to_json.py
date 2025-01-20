@@ -25,10 +25,8 @@ cap = pyshark.FileCapture(
         'tls.desegment_ssl_application_data': 'TRUE',
     },
 )
-
 packets_info = []
 
-# Extract features from QUIC and HTTP3 frames
 for packet in cap:
     packet_info = {
         "Packet Number": packet.number,
@@ -70,7 +68,6 @@ for packet in cap:
 
     packets_info.append(packet_info)
 
-# Save packet information to a JSON file
 output_file = f'{base_dir}/result_files/{case}.json'
 with open(output_file, 'w') as f:
     json.dump(packets_info, f, indent=4)
