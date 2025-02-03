@@ -27,7 +27,24 @@ cap = pyshark.FileCapture(
 )
 packets_info = []
 
+# Add this function to print all available fields
+def print_packet_attributes(packet):
+    print("\n=== NEW PACKET ===")
+    print(f"Packet number: {packet.number}")
+    if hasattr(packet, 'quic'):
+        print("\nQUIC Layer Attributes:")
+        # This will print all QUIC layer field names and values
+        for field_name in packet.quic.field_names:
+            print(f"{field_name}: {getattr(packet.quic, field_name)}")
+            
+    if hasattr(packet, 'http3'):
+        print("\nHTTP3 Layer Attributes:")
+        # This will print all HTTP3 layer field names and values
+        for field_name in packet.http3.field_names:
+            print(f"{field_name}: {getattr(packet.http3, field_name)}")
+
 for packet in cap:
+    #print_packet_attributes(packet)  
     packet_info = {
         "Packet Number": packet.number,
         "Source IP": packet.ip.src,
@@ -43,14 +60,12 @@ for packet in cap:
         for layer in packet.layers:
             if layer.layer_name == 'quic':
                 quic_frame_info = {
-                    "Connection number": getattr(layer, 'connection_number', 'N/A'),
                     "Packet Length": getattr(layer, 'packet_length', 'N/A'),
                     "Destination Connection ID": getattr(layer, 'dcid', 'N/A'),
                     "Source Connection ID": getattr(layer, 'scid', 'N/A') if hasattr(layer, 'scid') else "",
                     "Packet number": getattr(layer, 'packet_number', 'N/A'),
                     "Length": getattr(layer, 'length', 'N/A'),
-                    "Protected Payload": getattr(layer, 'protected_payload', 'N/A') if hasattr(layer, 'protected_payload') else "",
-                    "Payload": getattr(layer, 'payload', 'N/A') if hasattr(layer, 'payload') else "",
+                    "Frame Name": getattr(layer, 'frame', 'N/A'),
                     "Frame Type": getattr(layer, 'frame_type', 'N/A')
                 }
                 packet_info["QUIC Frames"].append(quic_frame_info)
@@ -61,7 +76,6 @@ for packet in cap:
                 http3_frame_info = {
                     "Frame Type": getattr(layer, 'frame_type', 'N/A'),
                     "Frame Length": getattr(layer, 'frame_length', 'N/A'),
-                    "Frame Payload": getattr(layer, 'frame_payload', 'N/A'),
                     "Settings Max Table Capacity": getattr(layer, 'settings_qpack_max_table_capacity', 'N/A') if hasattr(layer, 'settings_qpack_max_table_capacity') else ""
                 }
                 packet_info["HTTP3 Frames"].append(http3_frame_info)
