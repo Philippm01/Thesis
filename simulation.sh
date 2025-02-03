@@ -4,11 +4,11 @@ USER_SERVER="philipp"
 PASSWORD_CLIENT="Heisenberg2199"
 PASSWORD_SERVER="Heisenberg2199"
 
-CLIENT_IP="192.168.0.101"
-SERVER_IP="192.168.0.103"
+CLIENT_IP="192.168.1.83"
+SERVER_IP="192.168.1.48"
 
-CLIENT_INTERFACE="eth0"
-SERVER_INTERFACE="eth0"
+CLIENT_INTERFACE="wlan0"
+SERVER_INTERFACE="wlan0"
 
 AIOQUIC_PORT="4000"
 LSQUIC_PORT="4001"
@@ -124,8 +124,8 @@ simulate_loris(){
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$SERVER_COMMAND"
     kill_server $runtime $QUICLY_PORT
 
-    echo "Capturing traffic on Port $LSQUIC_PORT and $AIQOUIC_PORT and $QUICLY_PORT"
-    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
+    echo "Capturing traffic on Port $LSQUIC_PORT and $AIOQUIC_PORT and $QUICLY_PORT"
+    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file -F pcap > /dev/null 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$CAPTURE_COMMAND"
     
     #-----------------------------------------------Client traffic generation----------------------------------------------
@@ -169,7 +169,7 @@ simulate_loris(){
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
     
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
+    mv ./packet_capture/$capture_file $result_file
     cp $SECRETS_FILE ./secrets_files/slowloris_con:"$min_con"-"$max_con"_sleep:"$min_sleep"-"$max_sleep"_time:"$runtime"_it:"$iteration".txt
     rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }   
@@ -202,7 +202,7 @@ simulate_flood(){
     kill_server $runtime $QUICLY_PORT
 
     echo "Capturing traffic on Port $LSQUIC_PORT and $AIQOUIC_PORT and $QUICLY_PORT"
-    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
+    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file -F pcap > /dev/null 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$CAPTURE_COMMAND"
     
     #-----------------------------------------------Client traffic generation----------------------------------------------
@@ -246,7 +246,7 @@ simulate_flood(){
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
     
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
+    mv ./packet_capture/$capture_file $result_file
     cp $SECRETS_FILE ./secrets_files/flood_con:"$min_con"-"$max_con"_time:"$runtime"_it:"$iteration".txt
     rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }   
@@ -276,8 +276,8 @@ simulate_normal(){
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$SERVER_COMMAND"
     kill_server $runtime $QUICLY_PORT
 
-    echo "Capturing traffic on Port $LSQUIC_PORT and $AIQOUIC_PORT and $QUICLY_PORT"
-    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
+    echo "Capturing traffic on Port $LSQUIC_PORT and $AIOQUIC_PORT and $QUICLY_PORT"
+    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file -F pcap > /dev/null 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$CAPTURE_COMMAND"
     
     #-----------------------------------------------Client traffic generation----------------------------------------------
@@ -317,7 +317,7 @@ simulate_normal(){
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
     
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
+    mv ./packet_capture/$capture_file $result_file
     cp $SECRETS_FILE ./secrets_files/normal_time:"$runtime"_it:"$iteration".txt
     rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }   
@@ -329,7 +329,7 @@ simulate_lsquic_attack(){
     local url_l=https://$SERVER_IP:$LSQUIC_PORT/index.html
     local SECRETS_FILE="secrets.txt"
     local capture_file="simulation_capture.pcap"
-    local result_file="packet_capture/normal_time:"$runtime"_it:"$iteration".pcap"
+    local result_file="packet_capture/lsquic_time:"$runtime"_it:"$iteration".pcap"
 
     #-----------------------------------------------Server Setup and Capturing---------------------------------------------
     echo "Starting Aioquicserver on $SERVER_IP..."
@@ -348,7 +348,7 @@ simulate_lsquic_attack(){
     kill_server $runtime $QUICLY_PORT
 
     echo "Capturing traffic on Port $LSQUIC_PORT and $AIOQUIC_PORT and $QUICLY_PORT"
-    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
+    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file -F pcap > /dev/null 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$CAPTURE_COMMAND"
     
     #-----------------------------------------------Client traffic generation----------------------------------------------
@@ -382,7 +382,7 @@ simulate_lsquic_attack(){
         sleep 3
         SERVER_COMMAND="nohup bash -c 'cd $SERVER_DIR/lsquic/bin && ./http_server -c $SERVER_IP,fullchain.pem,privkey.pem -s 0.0.0.0:$LSQUIC_PORT -r /home/philipp/www/ -G $SERVER_DIR/lsquic/bin/keys' > /dev/null 2>&1 &"
         execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$SERVER_COMMAND"
-        sleep 3
+        sleep 1
     done
 
     sleep $((runtime - ($(date +%s) - start_time)))
@@ -409,8 +409,8 @@ simulate_lsquic_attack(){
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
     
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
-    cp $SECRETS_FILE ./secrets_files/normal_time:"$runtime"_it:"$iteration".txt
+    mv ./packet_capture/$capture_file $result_file
+    cp $SECRETS_FILE ./secrets_files/lsquic_time:"$runtime"_it:"$iteration".txt
     rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }  
 
@@ -421,7 +421,7 @@ simulate_quicly_attack(){
     local url_l=https://$SERVER_IP:$LSQUIC_PORT/index.html
     local SECRETS_FILE="secrets.txt"
     local capture_file="simulation_capture.pcap"
-    local result_file="packet_capture/normal_time:"$runtime"_it:"$iteration".pcap"
+    local result_file="packet_capture/quicly_time:"$runtime"_it:"$iteration".pcap"
 
     #-----------------------------------------------Server Setup and Capturing---------------------------------------------
     echo "Starting Aioquicserver on $SERVER_IP..."
@@ -440,7 +440,7 @@ simulate_quicly_attack(){
     kill_server $runtime $QUICLY_PORT
 
     echo "Capturing traffic on Port $LSQUIC_PORT and $AIOQUIC_PORT and $QUICLY_PORT"
-    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file > /dev/null 2>&1 &"
+    CAPTURE_COMMAND="nohup sudo tshark -i $SERVER_INTERFACE -f 'port $AIOQUIC_PORT or port $LSQUIC_PORT or port $QUICLY_PORT' -a duration:$runtime -w /tmp/$capture_file -F pcap > /dev/null 2>&1 &"
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$CAPTURE_COMMAND"
     
     #-----------------------------------------------Client traffic generation----------------------------------------------
@@ -474,7 +474,7 @@ simulate_quicly_attack(){
         sleep 3
         SERVER_COMMAND="nohup bash -c 'cd $SERVER_DIR/quicly && ./cli -c server.crt -k server.key $SERVER_IP $QUICLY_PORT -l quiclykeylogfile.txt' > /dev/null 2>&1 &"
         execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "$SERVER_COMMAND"
-        sleep 3
+        sleep 1
     done
 
     sleep $((runtime - ($(date +%s) - start_time)))
@@ -496,78 +496,77 @@ simulate_quicly_attack(){
     rm lsquic_temp
     rm aioquic_temp
     rm quicly_temp
-
+    
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "sudo chown $USER_SERVER:$USER_SERVER /tmp/$capture_file"
     sshpass -p "$PASSWORD_SERVER" scp "$USER_SERVER@$SERVER_IP:/tmp/$capture_file" ./packet_capture/
     execute_ssh_command "$USER_SERVER" "$SERVER_IP" "$PASSWORD_SERVER" "rm /tmp/$capture_file"
     
-    tshark -r ./packet_capture/$capture_file -o tls.keylog_file:$SECRETS_FILE -w $result_file
-    cp $SECRETS_FILE ./secrets_files/normal_time:"$runtime"_it:"$iteration".txt
+    mv ./packet_capture/$capture_file $result_file
+    cp $SECRETS_FILE ./secrets_files/quicly_time:"$runtime"_it:"$iteration".txt
     rm $SECRETS_FILE && rm ./packet_capture/$capture_file
 }  
 
 generation_normal(){
-    local runtime=60
+    local runtime=180
     local total_iterations=100
     
     for ((i=1; i<=$total_iterations; i++)); do
         print_in_box "Normal simulation iteration $i"
         simulate_normal $runtime $i
-        sleep 5  
+        rebooting
     done
 }
 
 generation_flood(){
-    local runtime=60
+    local runtime=180
     local total_iterations=100
     
     for ((i=1; i<=$total_iterations; i++)); do
         print_in_box "Flooding simulation iteration $i"
         simulate_flood 20 50 $runtime $i
-        sleep 5  
+        rebooting
     done
 }
 
 generation_loris(){
-    local runtime=60
+    local runtime=180
     local total_iterations=100
     
     for ((i=1; i<=$total_iterations; i++)); do
         print_in_box "Slowloris simulation iteration $i"
-        simulate_loris 5 10 $runtime 10 20 $i  
-        sleep 5  
+        simulate_loris 5 10 $runtime 20 40 $i  
+        rebooting 
     done
 }
 
 generation_lsquic(){
-    local runtime=60
+    local runtime=180
     local total_iterations=100
     
     for ((i=1; i<=$total_iterations; i++)); do
         print_in_box "LSQUIC CVE simulation iteration $i"
         simulate_lsquic_attack $runtime $i
-        sleep 5  
+        rebooting
     done
 }
 
 generation_quicly(){
-    local runtime=60
+    local runtime=180
     local total_iterations=100
     
     for ((i=1; i<=$total_iterations; i++)); do
         print_in_box "Quicly CVE simulation iteration $i"
         simulate_quicly_attack $runtime $i
-        sleep 5  
+        rebooting 
     done
 }
 
 generation_quicly
-rebooting
+
 generation_lsquic
-rebooting
-generation_flood
-rebooting
-generation_loris
-rebooting
+
 generation_normal
-rebooting
+
+generation_loris
+
+generation_flood
