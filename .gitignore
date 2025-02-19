@@ -5,4 +5,5 @@ __pycache__/
 *.pem
 *.txt
 *.pcap
+*.json
 
