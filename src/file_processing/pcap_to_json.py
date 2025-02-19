@@ -87,4 +87,3 @@ with open(output_file, 'w') as f:
     json.dump(packets_info, f, indent=4)
 
 
-
