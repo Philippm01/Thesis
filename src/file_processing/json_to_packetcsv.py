@@ -2,12 +2,7 @@ import json
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from sklearn.preprocessing import LabelEncoder
-from netml.pparser.parser import PCAP
 import os
-import glob
-
-#-----------------------------Utility Functions--------------------------------
 
 def parse_timestamp(time_str):
     time_str = ' '.join(time_str.split())
@@ -41,7 +36,17 @@ def create_default_http3_frame():
         "Settings Max Table Capacity": np.nan
     }
 
-#-----------------------------Feature Extraction--------------------------------
+def determine_attack_type(quic_frames, http3_frames):
+    for frame in quic_frames:
+        if frame.get("Frame Type") == 0x1C and any(f.get("Frame Type") == 0x06 for f in quic_frames):
+            return 1
+    for frame in http3_frames:
+        if frame.get("Settings Max Table Capacity") > 4096:
+            return 2
+    for frame in quic_frames:
+        if frame.get("Frame Type") == 0x01:
+            return 3
+    return 0
 
 def extract_packet_features(file_path, attack_label):
     MAX_FRAMES = 5
@@ -86,13 +91,15 @@ def extract_packet_features(file_path, attack_label):
         while len(processed_http3_frames) < MAX_FRAMES:
             processed_http3_frames.append(create_default_http3_frame())
 
-        #Reading all the packet and frame level for each each line
+        attack_type = determine_attack_type(processed_quic_frames, processed_http3_frames)
+
         packet_info = {
             "Packet Number": int(packet["Packet Number"]),
             "Packet Length": int(packet["Packet Length"]),
             "Interarrival Time": interarrival_time,
             "Num QUIC Frames": len(quic_frames),
             "Num HTTP3 Frames": len(http3_frames),
+            "Attack Type": attack_type
         }
 
         for i in range(MAX_FRAMES):
@@ -112,73 +119,17 @@ def extract_packet_features(file_path, attack_label):
                 f"HTTP3_Frame_{i+1}_Settings_Capacity": http3_frame["Settings Max Table Capacity"]
             })
 
-
-        packet_info["Attack Type"] = attack_label
         packets.append(packet_info)
 
     return pd.DataFrame(packets)
 
-def extract_netml_features(pcap_file, attack_label):
-    """Extract NetML features with proper flow handling"""
-    pcap = PCAP(pcap_file, flow_ptks_thres=1)
-    pcap.pcap2flows()
-    
-    # Extract specific features using NetML's built-in feature extraction
-    pcap.flow2features('STATS', fft=False, header=False)
-    features_df = pd.DataFrame(pcap.features)
-    
-    # Rename and select specific columns
-    selected_features = {
-        'flow_duration': 'duration',
-        'flow_length_packets': 'total_packets',
-        'flow_length_packets/flow_duration': 'packets_per_second',
-        'flow_length_mean': 'avg_packet_size',
-        'flow_length_std': 'std_packet_size',
-        'flow_length_min': 'min_packet_size',
-        'flow_length_max': 'max_packet_size'
-    }
-    
-    # Create new DataFrame with selected features
-    result_df = pd.DataFrame()
-    for new_name, old_name in selected_features.items():
-        if old_name in features_df.columns:
-            result_df[new_name] = features_df[old_name]
-        else:
-            result_df[new_name] = np.nan
-    
-    # Add attack label
-    result_df['Attack Type'] = attack_label
-    
-    return result_df
-
-def get_all_files_for_scenario(base_dir, scenario_pattern, start_iteration, end_iteration):
-
-    json_files = []
-    pcap_files = []
-    
-    for i in range(start_iteration, end_iteration + 1):
-        json_file = os.path.join(base_dir, "result_files", f"{scenario_pattern}_it:{i}.json")
-        pcap_file = os.path.join(base_dir, "packet_capture", f"{scenario_pattern}_it:{i}.pcap")
-        
-        if os.path.exists(json_file) and os.path.exists(pcap_file):
-            json_files.append(json_file)
-            pcap_files.append(pcap_file)
-        else:
-            print(f"file missing in iteration {i}")
-    
-    return list(zip(json_files, pcap_files))
-
-#-----------------------------Saving to csv files--------------------------------
-
 def create_empty_packet_df():
-    """Create empty DataFrame with packet feature columns"""
     columns = [
         "Packet Number", "Packet Length", "Interarrival Time",
         "Num QUIC Frames", "Num HTTP3 Frames"
     ]
     
-    # Add QUIC frame columns
-    for i in range(1, 6):  # 5 frames
+    for i in range(1, 6):
         columns.extend([
             f"QUIC_Frame_{i}_Packet_Length",
             f"QUIC_Frame_{i}_Packet_Number",
@@ -186,68 +137,58 @@ def create_empty_packet_df():
             f"QUIC_Frame_{i}_Type"
         ])
     
-    # Add HTTP3 frame columns
-    for i in range(1, 6):  # 5 frames
+    for i in range(1, 6):
         columns.extend([
             f"HTTP3_Frame_{i}_Type",
             f"HTTP3_Frame_{i}_Length",
             f"HTTP3_Frame_{i}_Settings_Capacity"
         ])
     
-    columns.append("Attack Type")  # Remove Iteration column
-    return pd.DataFrame(columns=columns)
-
-def create_empty_session_df():
-    columns = [
-        "duration", "total_packets", "packets_per_second",
-        "avg_packet_size", "std_packet_size", "min_packet_size", "max_packet_size",
-        "Attack Type"
-    ]
+    columns.append("Attack Type")
     return pd.DataFrame(columns=columns)
 
 def initialize_csv_files():
     packet_df = create_empty_packet_df()
-    session_df = create_empty_session_df()
-    
     packet_df.to_csv("all_iterations_quic_packets.csv", index=False)
-    session_df.to_csv("all_iterations_quic_sessions.csv", index=False)
 
 def append_to_csv(df, filename):
     df.to_csv(filename, mode='a', header=False, index=False)
 
-#-----------------------------Main function--------------------------------
-
 def process_scenario(attack_type, pattern, base_dir, start_it, end_it):
     files = get_all_files_for_scenario(base_dir, pattern, start_it, end_it)
     packet_count = 0
-    session_count = 0
     
     print(f"\nProcessing {attack_type} scenario...")
     
-    for json_file, pcap_file in files:
+    for json_file, _ in files:
         iteration = json_file.split("_it:")[1].split(".")[0]
         print(f"Processing iteration {iteration}")
         
         try:
-            # Process packet features
             packet_features = extract_packet_features(json_file, attack_type)
             append_to_csv(packet_features, "all_iterations_quic_packets.csv")
             packet_count += len(packet_features)
             
-            # Process session features with fixed columns
-            netml_features = extract_netml_features(pcap_file, attack_type)
-            append_to_csv(netml_features, "all_iterations_quic_sessions.csv")
-            session_count += len(netml_features)
-            
-            # Clear memory
             del packet_features
-            del netml_features
             
         except Exception as e:
             print(f"Error processing iteration {iteration}: {e}")
             continue
             
-    return packet_count, session_count
+    return packet_count
+
+def get_all_files_for_scenario(base_dir, scenario_pattern, start_iteration, end_iteration):
+    json_files = []
+    
+    for i in range(start_iteration, end_iteration + 1):
+        json_file = os.path.join(base_dir, "result_files", f"{scenario_pattern}_it:{i}.json")
+        
+        if os.path.exists(json_file):
+            json_files.append(json_file)
+        else:
+            print(f"file missing in iteration {i}")
+    
+    return [(json_file, None) for json_file in json_files]
 
 def main():
     scenarios = {
@@ -262,12 +203,11 @@ def main():
     start_iteration = 1  
     end_iteration = 100  
     total_packets = 0
-    total_sessions = 0
     
     initialize_csv_files()
     
     for attack_type, pattern in scenarios.items():
-        packets, sessions = process_scenario(
+        packets = process_scenario(
             attack_type, 
             pattern, 
             base_dir, 
@@ -275,12 +215,10 @@ def main():
             end_it=end_iteration
         )
         total_packets += packets
-        total_sessions += sessions
-        print(f"Completed {attack_type}: {packets} packets, {sessions} sessions")
+        print(f"Completed {attack_type}: {packets} packets")
     
     print("\nFinal Statistics:")
     print(f"Total packets processed: {total_packets}")
-    print(f"Total sessions processed: {total_sessions}")
 
 if __name__ == "__main__":
     main()
