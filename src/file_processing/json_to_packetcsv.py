@@ -26,30 +26,34 @@ def create_default_quic_frame():
         "Packet Length": np.nan,
         "Packet number": np.nan,
         "Length": np.nan,
-        "Frame Type": np.nan
+        "Frame Types": [np.nan, np.nan, np.nan]
     }
 
 def create_default_http3_frame():
     return {
-        "Frame Type": np.nan,
+        "Frame Types": [np.nan, np.nan, np.nan],
         "Frame Length": np.nan,
         "Settings Max Table Capacity": np.nan
     }
 
+def ensure_three_elements(lst):
+    return (lst + [np.nan] * 3)[:3]
+
 def determine_attack_type(quic_frames, http3_frames):
     for frame in quic_frames:
-        if frame.get("Frame Type") == 0x1C and any(f.get("Frame Type") == 0x06 for f in quic_frames):
+        if 0x1C in frame.get("Frame Types", []) and 0x06 in frame.get("Frame Types", []):
             return 1
     for frame in http3_frames:
         if frame.get("Settings Max Table Capacity") > 4096:
             return 2
     for frame in quic_frames:
-        if frame.get("Frame Type") == 0x01:
+        if 0x01 in frame.get("Frame Types", []):
             return 3
     return 0
 
 def extract_packet_features(file_path, attack_label):
-    MAX_FRAMES = 5
+    MAX_QUIC_FRAMES = 2
+    MAX_HTTP3_FRAMES = 4
     
     with open(file_path, "r") as f:
         data = json.load(f)
@@ -60,7 +64,7 @@ def extract_packet_features(file_path, attack_label):
     for packet in data:
         quic_frames = packet.get("QUIC Frames", [])
         http3_frames = packet.get("HTTP3 Frames", [])
-        if len(quic_frames) > MAX_FRAMES or len(http3_frames) > MAX_FRAMES:
+        if len(quic_frames) > MAX_QUIC_FRAMES or len(http3_frames) > MAX_HTTP3_FRAMES:
             continue
         
         arrival_time = parse_timestamp(packet["Arrival Time"])
@@ -70,25 +74,25 @@ def extract_packet_features(file_path, attack_label):
         prev_time = arrival_time
 
         processed_quic_frames = []
-        for frame in quic_frames[:MAX_FRAMES]:
+        for frame in quic_frames[:MAX_QUIC_FRAMES]:
             processed_quic_frames.append({
                 "Packet Length": safe_int(frame.get("Packet Length")),
                 "Packet number": safe_int(frame.get("Packet number")),
                 "Length": safe_int(frame.get("Length")),
-                "Frame Type": safe_int(frame.get("Frame Type"))
+                "Frame Types": ensure_three_elements(frame.get("Frame Types", []))
             })
         
         processed_http3_frames = []
-        for frame in http3_frames[:MAX_FRAMES]:
+        for frame in http3_frames[:MAX_HTTP3_FRAMES]:
             processed_http3_frames.append({
-                "Frame Type": safe_int(frame.get("Frame Type")),
+                "Frame Types": ensure_three_elements(frame.get("Frame Types", [])),
                 "Frame Length": safe_int(frame.get("Frame Length")),
                 "Settings Max Table Capacity": safe_int(frame.get("Settings Max Table Capacity"))
             })
 
-        while len(processed_quic_frames) < MAX_FRAMES:
+        while len(processed_quic_frames) < MAX_QUIC_FRAMES:
             processed_quic_frames.append(create_default_quic_frame())
-        while len(processed_http3_frames) < MAX_FRAMES:
+        while len(processed_http3_frames) < MAX_HTTP3_FRAMES:
             processed_http3_frames.append(create_default_http3_frame())
 
         attack_type = determine_attack_type(processed_quic_frames, processed_http3_frames)
@@ -102,19 +106,23 @@ def extract_packet_features(file_path, attack_label):
             "Attack Type": attack_type
         }
 
-        for i in range(MAX_FRAMES):
+        for i in range(MAX_QUIC_FRAMES):
             quic_frame = processed_quic_frames[i]
             packet_info.update({
                 f"QUIC_Frame_{i+1}_Packet_Length": quic_frame["Packet Length"],
                 f"QUIC_Frame_{i+1}_Packet_Number": quic_frame["Packet number"],
                 f"QUIC_Frame_{i+1}_Length": quic_frame["Length"],
-                f"QUIC_Frame_{i+1}_Type": quic_frame["Frame Type"]
+                f"QUIC_Frame_{i+1}_Type_1": quic_frame["Frame Types"][0],
+                f"QUIC_Frame_{i+1}_Type_2": quic_frame["Frame Types"][1],
+                f"QUIC_Frame_{i+1}_Type_3": quic_frame["Frame Types"][2]
             })
         
-        for i in range(MAX_FRAMES):
+        for i in range(MAX_HTTP3_FRAMES):
             http3_frame = processed_http3_frames[i]
             packet_info.update({
-                f"HTTP3_Frame_{i+1}_Type": http3_frame["Frame Type"],
+                f"HTTP3_Frame_{i+1}_Type_1": http3_frame["Frame Types"][0],
+                f"HTTP3_Frame_{i+1}_Type_2": http3_frame["Frame Types"][1],
+                f"HTTP3_Frame_{i+1}_Type_3": http3_frame["Frame Types"][2],
                 f"HTTP3_Frame_{i+1}_Length": http3_frame["Frame Length"],
                 f"HTTP3_Frame_{i+1}_Settings_Capacity": http3_frame["Settings Max Table Capacity"]
             })
@@ -129,17 +137,21 @@ def create_empty_packet_df():
         "Num QUIC Frames", "Num HTTP3 Frames"
     ]
     
-    for i in range(1, 6):
+    for i in range(1, 3):  
         columns.extend([
             f"QUIC_Frame_{i}_Packet_Length",
             f"QUIC_Frame_{i}_Packet_Number",
             f"QUIC_Frame_{i}_Length",
-            f"QUIC_Frame_{i}_Type"
+            f"QUIC_Frame_{i}_Type_1",
+            f"QUIC_Frame_{i}_Type_2",
+            f"QUIC_Frame_{i}_Type_3"
         ])
     
-    for i in range(1, 6):
+    for i in range(1, 5): 
         columns.extend([
-            f"HTTP3_Frame_{i}_Type",
+            f"HTTP3_Frame_{i}_Type_1",
+            f"HTTP3_Frame_{i}_Type_2",
+            f"HTTP3_Frame_{i}_Type_3",
             f"HTTP3_Frame_{i}_Length",
             f"HTTP3_Frame_{i}_Settings_Capacity"
         ])

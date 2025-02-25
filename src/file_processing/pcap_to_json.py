@@ -79,6 +79,21 @@ def extract_quic_frames(packet):
 
     return list(frame_types)
 
+def determine_attack_type(quic_frames, http3_frames):
+    for frame in quic_frames:
+        if frame == QUIC_FRAME_TYPES["CONNECTION_CLOSE"] and QUIC_FRAME_TYPES["CRYPTO"] in quic_frames:
+            return 1
+    for frame in http3_frames:
+        try:
+            if int(frame.get("Settings Max Table Capacity", 0)) > 4096:
+                return 2
+        except (ValueError, TypeError):
+            continue
+    for frame in quic_frames:
+        if frame == QUIC_FRAME_TYPES["PING"]:
+            return 3
+    return 0
+
 parser = argparse.ArgumentParser()
 parser.add_argument('case', type=str)
 args = parser.parse_args()
@@ -155,6 +170,9 @@ for packet in cap:
                     "Settings Max Table Capacity": getattr(layer, 'settings_qpack_max_table_capacity', 'N/A') if hasattr(layer, 'settings_qpack_max_table_capacity') else ""
                 }
                 packet_info["HTTP3 Frames"].append(http3_packet_info)
+
+    attack_type = determine_attack_type(frame_types, packet_info["HTTP3 Frames"])
+    packet_info["Attack Type"] = attack_type
 
     packets_info.append(packet_info)
 
