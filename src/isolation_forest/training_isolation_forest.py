@@ -1,11 +1,19 @@
 import pandas as pd
 import glob
-from netml.ndm.model import MODEL
-from netml.ndm.isolation_forest import IsolationForest
-from netml.utils.tool import dump_data, load_data
-from sklearn.model_selection import train_test_split
+from sklearn.ensemble import IsolationForest
+from sklearn.impute import SimpleImputer
+import joblib
+import os
 
-RANDOM_STATE = 42
+def load_csv_files(file_paths):
+    dataframes = []
+    for file in file_paths:
+        try:
+            df = pd.read_csv(file)
+            dataframes.append(df)
+        except Exception as e:
+            print(f"Error loading {file}: {e}")
+    return dataframes
 
 # Path to normal traffic dataset (all CSVs)
 dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/normal/*.csv"
@@ -15,48 +23,38 @@ csv_files = glob.glob(dataset_path)
 
 # Use only the first 80 files for training
 training_files = csv_files[:80]
-dataframes = []
 
-# Load all feature names
-all_features = sorted(set(pd.read_csv(training_files[0]).columns))
+# Load CSV files into dataframes
+dataframes = load_csv_files(training_files)
 
-for file in training_files:
-    df = pd.read_csv(file)
-
-    # Ensure all features exist, fill missing ones with NaN
-    for feature in all_features:
-        if feature not in df.columns:
-            df[feature] = float('nan')
-    
-    # Align column order
-    df = df[all_features]
- 
-    dataframes.append(df)
+if not dataframes:
+    raise ValueError("No objects to concatenate. Ensure the CSV files are present and readable.")
 
 # Combine all normal NetML feature data into one dataset
 df_normal = pd.concat(dataframes, ignore_index=True)
 
-# Convert DataFrame to NumPy array
-features = df_normal.values
-labels = [0] * len(features)  # Assume all data is normal
+# Handle NaN values by imputing with the mean of each column
+imputer = SimpleImputer(strategy='mean')
+X_train = imputer.fit_transform(df_normal)
 
-# Split train and test sets
-features_train, features_test, labels_train, labels_test = train_test_split(
-    features, labels, test_size=0.33, random_state=RANDOM_STATE
-)
+print(f"✅ Loaded {len(X_train)} normal NetML flow entries for training.")
 
-# Create and train detection model
-iso_forest = IsolationForest(n_estimators=100, contamination=0.05, random_state=RANDOM_STATE)
-iso_forest.name = 'IsolationForest'
-ndm = MODEL(iso_forest, score_metric='auc', verbose=10, random_state=RANDOM_STATE)
-ndm.train(features_train)
+# Train Isolation Forest on normal traffic
+iso_forest_model = IsolationForest(contamination=0.05, random_state=42)
 
-# Evaluate the trained model
-ndm.test(features_test, labels_test)
+print("🚀 Training Isolation Forest...")
+iso_forest_model.fit(X_train)
 
-# Dump model and training history
-dump_data((iso_forest, ndm.history), out_file='/home/philipp/Documents/Thesis/src/ocsvm/IsolationForest-results.dat')
+# Get the directory where this script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Stats
-print(ndm.train.tot_time, ndm.test.tot_time, ndm.score)
-print("✅ Isolation Forest model trained and saved with NetML")
+# Save trained model in the same directory as the script
+model_path = os.path.join(script_dir, "isolation_forest_model.pkl")
+imputer_path = os.path.join(script_dir, "imputer.pkl")
+
+# Save both model and imputer
+joblib.dump(iso_forest_model, model_path)
+joblib.dump(imputer, imputer_path)
+
+print(f"✅ Model trained and saved at {model_path}")
+print(f"✅ Imputer saved at {imputer_path}")
