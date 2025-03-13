@@ -1,6 +1,6 @@
 import pandas as pd
 import glob
-from sklearn.svm import OneClassSVM
+from sklearn.ensemble import IsolationForest  # Add this import
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import joblib
@@ -77,24 +77,20 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name):
     
     return results
 
-# Hyperparameter grid
-nu_values = [0.001, 0.01, 0.05, 0.1, 0.5]
-gamma_values = ['scale', 'auto', 0.01, 0.001, 0.0001, 0.00001]
+contamination_values = [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2]
+n_estimators_values = [100, 200, 500, 1000]
+max_samples_values = [10000]  # Single fixed value instead of multiple options
 scaling_methods = [
     ('none', None),
     ('standard', StandardScaler()),
     ('minmax', MinMaxScaler())
 ]
 
-# Path to normal traffic dataset
 dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/normal/*.csv"
 csv_files = glob.glob(dataset_path)
-
-# Use only 10 files for training
 training_files = csv_files[:10]
 print(f"Using {len(training_files)} files for training")
 
-# Load and prepare data
 dataframes = load_csv_files(training_files)
 if not dataframes:
     raise ValueError("No objects to concatenate")
@@ -105,7 +101,6 @@ X_train = imputer.fit_transform(df_normal)
 
 print(f"Loaded {len(X_train)} normal NetML flow entries for training")
 
-# Create output directory for models
 script_dir = os.path.dirname(os.path.abspath(__file__))
 models_dir = os.path.join(script_dir, "grid_search_models")
 os.makedirs(models_dir, exist_ok=True)
@@ -119,40 +114,49 @@ all_results = {
 }
 
 # Train and test models
-for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scaling_methods):
-    model_name = f"ocsvm_nu{nu}_gamma{gamma}_{scaling_name}".replace(".", "")
+for cont, n_est, max_samp, (scaling_name, scaler) in product(
+    contamination_values, n_estimators_values, 
+    max_samples_values, scaling_methods):
+    
+    model_name = f"iforest_cont{cont}_est{n_est}_samp{max_samp}_{scaling_name}".replace(".", "")
     print(f"\nTraining model: {model_name}")
-    print(f"Parameters: nu={nu}, gamma={gamma}, scaling={scaling_name}")
+    print(f"Parameters: contamination={cont}, n_estimators={n_est}, "
+          f"max_samples={max_samp}, scaling={scaling_name}")
     
     # Apply scaling if specified
     X_train_scaled = X_train
     if scaler is not None:
         X_train_scaled = scaler.fit_transform(X_train)
     
-    svm_model = OneClassSVM(kernel="rbf", gamma=gamma, nu=nu)
-    svm_model.fit(X_train_scaled)
+    iforest = IsolationForest(
+        contamination=cont,
+        n_estimators=n_est,
+        max_samples=max_samp,
+        random_state=42
+    )
+    iforest.fit(X_train_scaled)
     
-    # Save model, imputer, and scaler
+    # Save model components
     model_path = os.path.join(models_dir, f"{model_name}.pkl")
     imputer_path = os.path.join(models_dir, f"{model_name}_imputer.pkl")
     
-    joblib.dump(svm_model, model_path)
+    joblib.dump(iforest, model_path)
     joblib.dump(imputer, imputer_path)
     
     if scaler is not None:
         scaler_path = os.path.join(models_dir, f"{model_name}_scaler.pkl")
         joblib.dump(scaler, scaler_path)
 
-    # Test model
-    print("\nTesting model on all scenarios...")
+    # Test model on all scenarios
     base_dir = "/home/philipp/Documents/Thesis"
     scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
     
     model_results = {
         "model_name": model_name,
         "parameters": {
-            "nu": nu,
-            "gamma": gamma,
+            "contamination": cont,
+            "n_estimators": n_est,
+            "max_samples": max_samp,
             "scaling": scaling_name
         },
         "scenarios": []
@@ -160,38 +164,22 @@ for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scalin
     
     for scenario in scenarios:
         scenario_path = os.path.join(base_dir, "session_Datasets", scenario)
-        if not os.path.exists(scenario_path):
-            print(f"Directory not found: {scenario_path}")
-            continue
-            
-        results = test_scenario(scenario_path, svm_model, scaler, imputer, scenario)
-        if results:
-            model_results["scenarios"].append(results)
+        if os.path.exists(scenario_path):
+            results = test_scenario(scenario_path, iforest, scaler, imputer, scenario)
+            if results:
+                model_results["scenarios"].append(results)
     
     all_results["models"].append(model_results)
     
     print(f"Model complete: {model_name}")
     for scenario in model_results["scenarios"]:
-        print(f"{scenario['scenario']}: Normal={scenario['total']['normal_percentage']:.2f}%, Attack={scenario['total']['attack_percentage']:.2f}%")
+        print(f"{scenario['scenario']}: Normal={scenario['total']['normal_percentage']:.2f}%, "
+              f"Attack={scenario['total']['attack_percentage']:.2f}%")
 
-# Save results in script directory instead of models directory
-script_dir = os.path.dirname(os.path.abspath(__file__))
+# Save results in script directory
 results_file = os.path.join(script_dir, "complete_grid_search_results.json")
 with open(results_file, 'w') as f:
     json.dump(all_results, f, indent=4)
 
 print(f"\nAll results saved to {results_file}")
-
-print("\nCompleted training all model variations")
 print(f"Models saved in: {models_dir}")
-
-# Save configuration summary
-with open(os.path.join(models_dir, "models_info.txt"), "w") as f:
-    f.write("One-Class SVM Models Training Summary\n")
-    f.write("================================\n\n")
-    f.write(f"Training samples: {len(X_train)}\n")
-    f.write(f"Training files used: {len(training_files)}\n\n")
-    f.write("Models created:\n")
-    for nu, gamma, (scaling_name, _) in product(nu_values, gamma_values, scaling_methods):
-        f.write(f"\n- nu={nu}, gamma={gamma}, scaling={scaling_name}")
-        f.write(f"\n  Model name: ocsvm_nu{nu}_gamma{gamma}_{scaling_name}".replace(".", ""))

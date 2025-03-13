@@ -12,7 +12,7 @@ from tqdm import tqdm
 # python3 benchmarking_ocsvm.py --model-path ocsvm/one_class_svm_model.pkl --normal-start 90 --normal-end 91 --attack-start 1 --attack-end 1
 
 
-def test_scenario(scenario_path, model, scenario_name, normal_range, attack_range):
+def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_range, attack_range):
     print(f"\n{'='*20} {scenario_name.upper()} {'='*20}")
     
     csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
@@ -45,21 +45,17 @@ def test_scenario(scenario_path, model, scenario_name, normal_range, attack_rang
         "total": {"normal": 0, "attack": 0, "total": 0}
     }
     
-    imputer = SimpleImputer(strategy='mean')
-    
     for file in tqdm(valid_files, desc=f"Processing {scenario_name}"):
         try:
+            # Load and transform data using both imputer and scaler
             df = pd.read_csv(file)
-            X = imputer.fit_transform(df)
+            X_imputed = imputer.transform(df)
+            X = scaler.transform(X_imputed)
+            
             predictions = model.predict(X)
-            
-            normal = sum(predictions == 1)
-            attack = sum(predictions == -1)
+            normal = int(sum(predictions == 1))
+            attack = int(sum(predictions == -1))
             total = len(predictions)
-            
-            normal = int(normal)
-            attack = int(attack)
-            total = int(total)
             
             file_result = {
                 "filename": os.path.basename(file),
@@ -96,22 +92,21 @@ def main():
     args = parser.parse_args()
 
     base_src_dir = "/home/philipp/Documents/Thesis/src"
-    model_full_path = os.path.join(base_src_dir, args.model_path)
-    
+    model_dir = os.path.dirname(os.path.join(base_src_dir, args.model_path))
     model_name = os.path.splitext(os.path.basename(args.model_path))[0]
-    results_file = f"{model_name}_test_results.json"
-    results_path = os.path.join(os.path.dirname(model_full_path), results_file)
+    
+    # Load model, imputer and scaler
+    try:
+        model = joblib.load(os.path.join(base_src_dir, args.model_path))
+        imputer = joblib.load(os.path.join(model_dir, "imputer.pkl"))
+        scaler = joblib.load(os.path.join(model_dir, "scaler.pkl"))
+        print(f"Model and preprocessing components loaded successfully")
+    except Exception as e:
+        print(f"Error loading model components: {e}")
+        return
 
     normal_range = (args.normal_start, args.normal_end)
     attack_range = (args.attack_start, args.attack_end)
-
-    try:
-        model = joblib.load(model_full_path)
-        print(f" Model loaded successfully from {model_full_path}")
-    except Exception as e:
-        print(f"Error loading model {e}")
-        return
-
     base_dir = "/home/philipp/Documents/Thesis/session_Datasets"
     scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
     
@@ -129,15 +124,22 @@ def main():
             print(f"Directory of scenario not found: {scenario_path}")
             continue
             
-        results = test_scenario(scenario_path, model, scenario, normal_range, attack_range)
+        results = test_scenario(scenario_path, model, imputer, scaler, 
+                              scenario, normal_range, attack_range)
         if results:
             all_results["scenarios"].append(results)
+    
+    # Save results
+    results_file = f"{model_name}_test_results.json"
+    results_path = os.path.join(model_dir, results_file)
     
     if os.path.exists(results_path):
         os.remove(results_path)
     
     with open(results_path, 'w') as f:
         json.dump(all_results, f, indent=4)
+    
+    print(f"\nResults saved to {results_path}")
 
 if __name__ == "__main__":
     main()
