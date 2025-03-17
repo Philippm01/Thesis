@@ -32,7 +32,6 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name):
     
     for file in tqdm(valid_files, desc=f"Processing {scenario_name}"):
         try:
-            # Extract number of attacks from filename using regex
             filename = os.path.basename(file)
             match = re.search(r'lsquic_attacks:(\d+)_time', filename)
             if match:
@@ -40,8 +39,6 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name):
             else:
                 print(f"Could not extract number of attacks from filename: {filename}")
                 continue
-            
-            # Load and transform data using both imputer and scaler
             df = pd.read_csv(file)
             X_imputed = imputer.transform(df)
             X = scaler.transform(X_imputed)
@@ -91,7 +88,6 @@ def main():
     model_dir = os.path.dirname(os.path.join(base_src_dir, args.model_path))
     model_name = os.path.splitext(os.path.basename(args.model_path))[0]
     
-    # Load model, imputer and scaler
     try:
         model = joblib.load(os.path.join(base_src_dir, args.model_path))
         imputer = joblib.load(os.path.join(model_dir, "imputer.pkl"))
@@ -113,33 +109,26 @@ def main():
                               scenario)
     
     if attack_percentages:
-        # Calculate average attack percentage for each attack level
         avg_attack_percentages = {
             num_attacks: np.mean(percentages)
             for num_attacks, percentages in attack_percentages.items()
         }
         
-        # Prepare data for plotting
         num_attacks_list = sorted(avg_attack_percentages.keys())
         avg_percentages_list = [avg_attack_percentages[k] for k in num_attacks_list]
-        
-        # Generate plot
+   
         plt.figure(figsize=(10, 6))
         plt.plot(num_attacks_list, avg_percentages_list, marker='o')
         plt.title('Average Attack Percentage vs. Number of Attacks (LSQUIC)')
         plt.xlabel('Number of Attacks')
         plt.ylabel('Average Attack Percentage')
         plt.grid(True)
-        
-        # Save plot
+
         plot_file = f"{model_name}_lsquic_attack_plot.png"
         plot_path = os.path.join(model_dir, plot_file)
         plt.savefig(plot_path)
         plt.close()
-        
-        print(f"\nPlot saved to {plot_path}")
-    else:
-        print("No results to plot.")
+    
 
 if __name__ == "__main__":
     main()
