@@ -4,7 +4,7 @@ USER_SERVER="philipp"
 PASSWORD_CLIENT="Heisenberg2199"
 PASSWORD_SERVER="Heisenberg2199"
 
-CLIENT_IP="192.168.1.83"
+CLIENT_IP="192.168.1.82"
 SERVER_IP="192.168.1.48"
 
 CLIENT_INTERFACE="wlan0"
@@ -520,24 +520,35 @@ generation_normal(){
 
 generation_flood(){
     local runtime=180
-    local total_iterations=100
-    
-    for ((i=51; i<=$total_iterations; i++)); do    ##change back!!!!
-        print_in_box "Flooding simulation iteration $i"
-        simulate_flood_traffic 20 50 $runtime $i
-        rebooting
+    local total_iterations=10
+    local num_ranges=10
+
+    for ((j=1; j<=$num_ranges; j++)); do
+        local min_con=$(( (j - 1) * 10 + 1 ))
+        local max_con=$(( min_con + 9 ))
+
+        for ((i=1; i<=$total_iterations; i++)); do
+            print_in_box "Flooding simulation iteration $i with con: $min_con-$max_con"
+            simulate_flood_traffic $min_con $max_con $runtime $i
+            rebooting
+        done
     done
 }
 
 generation_loris(){
     local runtime=180
-    local total_iterations=100
+    local total_iterations=10
     
-    for ((i=1; i<=$total_iterations; i++)); do 
-        print_in_box "Slowloris simulation iteration $i"
-        simulate_loris_traffic 5 10 $runtime 20 40 $i  
-        rebooting 
+    for ((sleep_time=100; sleep_time>=10; sleep_time-=10)); do
+        local min_sleep=$sleep_time
+        local max_sleep=$sleep_time
+        for ((i=1; i<=$total_iterations; i++)); do 
+            print_in_box "Slowloris simulation iteration $i with sleep time: $min_sleep-$max_sleep"
+            simulate_loris_traffic 5 10 $runtime $min_sleep $max_sleep $i  
+            rebooting 
+        done
     done
+
 }
 
 generation_lsquic(){
@@ -565,10 +576,3 @@ generation_quicly(){
         done
     done
 }
-
-
-generation_lsquic
-
-generation_quicly
-
-generation_flood

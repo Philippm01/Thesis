@@ -79,7 +79,7 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name):
 
 contamination_values = [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2]
 n_estimators_values = [100, 200, 500, 1000]
-max_samples_values = [10000]  # Single fixed value instead of multiple options
+max_samples_values = [10000] 
 scaling_methods = [
     ('none', None),
     ('standard', StandardScaler()),
@@ -113,7 +113,6 @@ all_results = {
     "models": []
 }
 
-# Train and test models
 for cont, n_est, max_samp, (scaling_name, scaler) in product(
     contamination_values, n_estimators_values, 
     max_samples_values, scaling_methods):
@@ -123,7 +122,6 @@ for cont, n_est, max_samp, (scaling_name, scaler) in product(
     print(f"Parameters: contamination={cont}, n_estimators={n_est}, "
           f"max_samples={max_samp}, scaling={scaling_name}")
     
-    # Apply scaling if specified
     X_train_scaled = X_train
     if scaler is not None:
         X_train_scaled = scaler.fit_transform(X_train)
@@ -136,7 +134,6 @@ for cont, n_est, max_samp, (scaling_name, scaler) in product(
     )
     iforest.fit(X_train_scaled)
     
-    # Save model components
     model_path = os.path.join(models_dir, f"{model_name}.pkl")
     imputer_path = os.path.join(models_dir, f"{model_name}_imputer.pkl")
     
@@ -147,7 +144,6 @@ for cont, n_est, max_samp, (scaling_name, scaler) in product(
         scaler_path = os.path.join(models_dir, f"{model_name}_scaler.pkl")
         joblib.dump(scaler, scaler_path)
 
-    # Test model on all scenarios
     base_dir = "/home/philipp/Documents/Thesis"
     scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
     
@@ -176,7 +172,6 @@ for cont, n_est, max_samp, (scaling_name, scaler) in product(
         print(f"{scenario['scenario']}: Normal={scenario['total']['normal_percentage']:.2f}%, "
               f"Attack={scenario['total']['attack_percentage']:.2f}%")
 
-# Save results in script directory
 results_file = os.path.join(script_dir, "complete_grid_search_results.json")
 with open(results_file, 'w') as f:
     json.dump(all_results, f, indent=4)

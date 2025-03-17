@@ -35,7 +35,7 @@ print(f"Loaded {len(X_train)} normal NetML flow entries for training")
 
 iforest = IsolationForest(
     n_estimators=100,
-    contamination=0.001,  # Similar to nu in OneClassSVM
+    contamination=0.001,  
     max_samples='auto',
     random_state=42
 )

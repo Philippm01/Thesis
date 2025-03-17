@@ -31,8 +31,6 @@ X_imputed = imputer.fit_transform(df_normal)
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_imputed)
 
-print(f"Loaded {len(X_train)} normal NetML flow entries for training")
-
 svm_model = OneClassSVM(kernel="rbf", gamma=0.01, nu=0.001)
 svm_model.fit(X_train)
 
