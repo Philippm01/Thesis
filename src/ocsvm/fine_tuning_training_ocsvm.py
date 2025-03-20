@@ -19,7 +19,7 @@ def load_csv_files(file_paths):
             print(f"Error loading {file}: {e}")
     return dataframes
 
-def test_scenario(scenario_path, model, scaler, imputer, scenario_name):
+def test_scenario(scenario_path, model, scaler, imputer, scenario_name, file_prefix=None, normal_test=False):
     csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
     
     file_numbers = []
@@ -31,7 +31,14 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name):
             continue
     
     file_numbers.sort(key=lambda x: x[1])
-    valid_files = [f for f, num in file_numbers if 1 <= num <= 50]
+    
+    if normal_test:
+        valid_files = [f for f, num in file_numbers if 81 <= num <= 100]
+    else:
+        valid_files = [f for f, num in file_numbers if 1 <= num <= 50]
+
+    if file_prefix:
+        valid_files = [f for f in valid_files if os.path.basename(f).startswith(file_prefix)]
     
     if not valid_files:
         return None
@@ -77,7 +84,6 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name):
     
     return results
 
-# Hyperparameter grid
 nu_values = [0.001, 0.01, 0.05, 0.1, 0.5]
 gamma_values = ['scale', 'auto', 0.01, 0.001, 0.0001, 0.00001]
 scaling_methods = [
@@ -88,13 +94,13 @@ scaling_methods = [
 
 # Path to normal traffic dataset
 dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/normal/*.csv"
+#dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/quicly/*.csv"
+#dataset_path2 = "/home/philipp/Documents/Thesis/session_Datasets/lsquic/*.csv"
+#dataset_path3 = "/home/philipp/Documents/Thesis/session_Datasets/slowloris/*.csv"
+
 csv_files = glob.glob(dataset_path)
+training_files = csv_files[:20]
 
-# Use only 10 files for training
-training_files = csv_files[:10]
-print(f"Using {len(training_files)} files for training")
-
-# Load and prepare data
 dataframes = load_csv_files(training_files)
 if not dataframes:
     raise ValueError("No objects to concatenate")
@@ -103,7 +109,7 @@ df_normal = pd.concat(dataframes, ignore_index=True)
 imputer = SimpleImputer(strategy='mean')
 X_train = imputer.fit_transform(df_normal)
 
-print(f"Loaded {len(X_train)} normal NetML flow entries for training")
+print(f"Loaded {len(X_train)} NetML flow entries for training")
 
 # Create output directory for models
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -118,13 +124,17 @@ all_results = {
     "models": []
 }
 
-# Train and test models
+file_prefixes = {
+    "slowloris": "slowloris_isolated_con:5-10_sleep:1-5_time:180",
+    "quicly": "quicly_isolation_time:180",
+    "lsquic": "lsquic_isolated_time:180"
+}
+
 for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scaling_methods):
     model_name = f"ocsvm_nu{nu}_gamma{gamma}_{scaling_name}".replace(".", "")
     print(f"\nTraining model: {model_name}")
     print(f"Parameters: nu={nu}, gamma={gamma}, scaling={scaling_name}")
     
-    # Apply scaling if specified
     X_train_scaled = X_train
     if scaler is not None:
         X_train_scaled = scaler.fit_transform(X_train)
@@ -132,7 +142,6 @@ for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scalin
     svm_model = OneClassSVM(kernel="rbf", gamma=gamma, nu=nu)
     svm_model.fit(X_train_scaled)
     
-    # Save model, imputer, and scaler
     model_path = os.path.join(models_dir, f"{model_name}.pkl")
     imputer_path = os.path.join(models_dir, f"{model_name}_imputer.pkl")
     
@@ -143,10 +152,9 @@ for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scalin
         scaler_path = os.path.join(models_dir, f"{model_name}_scaler.pkl")
         joblib.dump(scaler, scaler_path)
 
-    # Test model
     print("\nTesting model on all scenarios...")
     base_dir = "/home/philipp/Documents/Thesis"
-    scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
+    scenarios = ["normal", "slowloris", "quicly", "lsquic"]
     
     model_results = {
         "model_name": model_name,
@@ -163,8 +171,10 @@ for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scalin
         if not os.path.exists(scenario_path):
             print(f"Directory not found: {scenario_path}")
             continue
-            
-        results = test_scenario(scenario_path, svm_model, scaler, imputer, scenario)
+        
+        file_prefix = file_prefixes.get(scenario)
+        normal_test = (scenario == "normal")
+        results = test_scenario(scenario_path, svm_model, scaler, imputer, scenario, file_prefix, normal_test)
         if results:
             model_results["scenarios"].append(results)
     
@@ -174,7 +184,6 @@ for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scalin
     for scenario in model_results["scenarios"]:
         print(f"{scenario['scenario']}: Normal={scenario['total']['normal_percentage']:.2f}%, Attack={scenario['total']['attack_percentage']:.2f}%")
 
-# Save results in script directory instead of models directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 results_file = os.path.join(script_dir, "complete_grid_search_results.json")
 with open(results_file, 'w') as f:
@@ -185,7 +194,6 @@ print(f"\nAll results saved to {results_file}")
 print("\nCompleted training all model variations")
 print(f"Models saved in: {models_dir}")
 
-# Save configuration summary
 with open(os.path.join(models_dir, "models_info.txt"), "w") as f:
     f.write("One-Class SVM Models Training Summary\n")
     f.write("================================\n\n")

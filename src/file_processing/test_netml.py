@@ -1,34 +1,67 @@
+import os
 from netml.pparser.parser import PCAP
-import numpy as np
 import pandas as pd
+import argparse
 
-pcap_file = '/home/philipp/Documents/Thesis/packet_capture/flood_con:20-50_time:180_it:10.pcap'
+def extract_netml_features(pcap_file):
+    print(f"Reading PCAP file: {pcap_file}")
+    base_dir = '/home/philipp/Documents/Thesis'
+    pcap_dir = os.path.join(base_dir, "packet_capture")
+    pcap_path = os.path.join(pcap_dir, pcap_file)
+    try:
+        pcap = PCAP(pcap_path, flow_ptks_thres=1)
+        pcap.pcap2flows()
 
-pcap = PCAP(pcap_file, flow_ptks_thres=2)
-pcap.pcap2flows()
+        feature_types = ['IAT', 'STATS', 'SIZE', 'SAMP_NUM', 'SAMP_SIZE']
+        feature_names = []
 
-feature_types = ['IAT', 'STATS', 'SIZE', 'SAMP_NUM', 'SAMP_SIZE']
-extracted_data = []
-actual_feature_names = []
+        for feature_type in feature_types:
+            pcap.flow2features(feature_type, fft=False, header=True)
+            if hasattr(pcap, 'fieldnames'):
+                feature_names.extend([f"{feature_type}_{col}" for col in pcap.fieldnames])
+            else:
+                feature_names.extend([f"{feature_type}_{i+1}" for i in range(len(pcap.features[0]))])
 
-for ft in feature_types:
-    pcap.flow2features(ft, fft=False, header=True)
-    data = pcap.features
-    extracted_data.append(data)
+        return feature_names
+    except (RuntimeError, IndexError) as e:
+        print(f"Error processing PCAP file {pcap_file}: {e}")
+        return []
+
+def main():
+    base_dir = '/home/philipp/Documents/Thesis'
+    pcap_dir = os.path.join(base_dir, "packet_capture")
     
-    if hasattr(pcap, 'fieldnames'):
-        actual_feature_names.extend(pcap.fieldnames)
+    feature_types = ['IAT', 'STATS', 'SIZE', 'SAMP_NUM', 'SAMP_SIZE']
+    
+    results = []
+    
+    for filename in sorted(os.listdir(pcap_dir)):
+        if filename.endswith(".pcap"):
+            full_pcap_path = os.path.join(pcap_dir, filename)
+            if os.path.exists(full_pcap_path):
+                feature_names = extract_netml_features(filename)
+                
+                feature_counts = {
+                    feature_type: sum(1 for feature in feature_names if feature.startswith(feature_type))
+                    for feature_type in feature_types
+                }
+                
+                results.append({
+                    "filename": filename,
+                    **feature_counts
+                })
+            else:
+                print(f"PCAP file not found: {filename}")
+    
+    if results:
+        df = pd.DataFrame(results)
+        df = df.sort_values(by="filename")
+        
+        output_csv_path = os.path.join(base_dir, "feature_counts.csv")
+        df.to_csv(output_csv_path, index=False)
+        print(f"Feature counts saved to {output_csv_path}")
     else:
-        actual_feature_names.extend([f"{ft}_{i+1}" for i in range(data.shape[1])])
+        print("No PCAP files were successfully processed.")
 
-min_rows = min([data.shape[0] for data in extracted_data])
-extracted_data = [data[:min_rows] for data in extracted_data]
-
-combined_features = np.hstack(extracted_data)
-
-df = pd.DataFrame(combined_features, columns=actual_feature_names)
-
-df.to_csv("verified_extracted_features.csv", index=False)
-print("Extracted features saved to verified_extracted_features.csv")
-
-print("Actual extracted feature names:\n", actual_feature_names)
+if __name__ == "__main__":
+    main()

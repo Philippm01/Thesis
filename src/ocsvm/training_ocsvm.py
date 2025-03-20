@@ -31,7 +31,7 @@ X_imputed = imputer.fit_transform(df_normal)
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_imputed)
 
-svm_model = OneClassSVM(kernel="rbf", gamma=0.01, nu=0.001)
+svm_model = OneClassSVM(kernel="rbf", gamma="scale", nu=0.001)
 svm_model.fit(X_train)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))

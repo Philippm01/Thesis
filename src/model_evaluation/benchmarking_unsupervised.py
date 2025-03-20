@@ -8,11 +8,7 @@ from sklearn.impute import SimpleImputer
 import argparse
 from tqdm import tqdm
 
-
-# python3 benchmarking_ocsvm.py --model-path ocsvm/one_class_svm_model.pkl --normal-start 90 --normal-end 91 --attack-start 1 --attack-end 1
-
-
-def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_range, attack_range):
+def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_range, attack_range, file_prefix=None):
     print(f"\n{'='*20} {scenario_name.upper()} {'='*20}")
     
     csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
@@ -33,6 +29,9 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_r
     else:
         start, end = attack_range
         valid_files = [f for f, num in file_numbers if start <= num <= end]
+
+    if file_prefix:
+        valid_files = [f for f in valid_files if os.path.basename(f).startswith(file_prefix)]
     
     if not valid_files:
         return None
@@ -47,7 +46,6 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_r
     
     for file in tqdm(valid_files, desc=f"Processing {scenario_name}"):
         try:
-            # Load and transform data using both imputer and scaler
             df = pd.read_csv(file)
             X_imputed = imputer.transform(df)
             X = scaler.transform(X_imputed)
@@ -82,54 +80,55 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_r
     return results
 
 def main():
-    parser = argparse.ArgumentParser(description='Test OCSVM model with custom ranges')
+    parser = argparse.ArgumentParser(description='Test models')
     parser.add_argument('--model-path', type=str, required=True, 
                        help='Path to model file relative to /home/philipp/Documents/Thesis/src')
-    parser.add_argument('--normal-start', type=int, default=81)
-    parser.add_argument('--normal-end', type=int, default=100)
-    parser.add_argument('--attack-start', type=int, default=1)
-    parser.add_argument('--attack-end', type=int, default=20)
     args = parser.parse_args()
 
-    base_src_dir = "/home/philipp/Documents/Thesis/src"
-    model_dir = os.path.dirname(os.path.join(base_src_dir, args.model_path))
+    model_dir = os.path.dirname(args.model_path)
     model_name = os.path.splitext(os.path.basename(args.model_path))[0]
-    
-    # Load model, imputer and scaler
+
     try:
-        model = joblib.load(os.path.join(base_src_dir, args.model_path))
+        model = joblib.load(args.model_path)
         imputer = joblib.load(os.path.join(model_dir, "imputer.pkl"))
         scaler = joblib.load(os.path.join(model_dir, "scaler.pkl"))
-        print(f"Model and preprocessing components loaded successfully")
+        print(f"Model loaded successfully")
     except Exception as e:
         print(f"Error loading model components: {e}")
         return
 
-    normal_range = (args.normal_start, args.normal_end)
-    attack_range = (args.attack_start, args.attack_end)
+    normal_range = (81, 100)
+    attack_range = (1, 20)
     base_dir = "/home/philipp/Documents/Thesis/session_Datasets"
-    scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
+    scenarios = ["normal", "flood", "slowloris", "quicly", "lsquic"]
     
     all_results = {
         "scenarios": [],
         "test_ranges": {
-            "normal": {"start": args.normal_start, "end": args.normal_end},
-            "attack": {"start": args.attack_start, "end": args.attack_end}
+            "normal": {"start": 81, "end": 100},
+            "attack": {"start": 1, "end": 20}
         }
     }
     
     for scenario in scenarios:
         scenario_path = os.path.join(base_dir, scenario)
         if not os.path.exists(scenario_path):
-            print(f"Directory of scenario not found: {scenario_path}")
+            print(f"scenario not found: {scenario_path}")
             continue
+        
+        file_prefix = None
+        if scenario == "slowloris":
+            file_prefix = "slowloris_isolated_con:5-10_sleep:1-5_time:180"
+        elif scenario == "quicly":
+            file_prefix = "quicly_isolation_time:180"
+        elif scenario == "lsquic":
+            file_prefix = "lsquic_isolated_time:180"
             
         results = test_scenario(scenario_path, model, imputer, scaler, 
-                              scenario, normal_range, attack_range)
+                              scenario, normal_range, attack_range, file_prefix)
         if results:
             all_results["scenarios"].append(results)
     
-    # Save results
     results_file = f"{model_name}_test_results.json"
     results_path = os.path.join(model_dir, results_file)
     
@@ -139,7 +138,7 @@ def main():
     with open(results_path, 'w') as f:
         json.dump(all_results, f, indent=4)
     
-    print(f"\nResults saved to {results_path}")
+    print(f"\nResult saved to {results_path}")
 
 if __name__ == "__main__":
     main()
