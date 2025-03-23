@@ -120,14 +120,17 @@ def main():
         if scenario == "slowloris":
             file_prefix = "slowloris_isolated_con:5-10_sleep:1-5_time:180"
         elif scenario == "quicly":
-            file_prefix = "quicly_isolation_time:180"
+            file_prefix = "quicly_isolation"
         elif scenario == "lsquic":
-            file_prefix = "lsquic_isolated_time:180"
+            file_prefix = "lsquic_isolation"
             
         results = test_scenario(scenario_path, model, imputer, scaler, 
                               scenario, normal_range, attack_range, file_prefix)
         if results:
             all_results["scenarios"].append(results)
+            print(f"\n{scenario.upper()} SUMMARY:")
+            print(f"  Normal Percentage: {results['total']['normal_percentage']:.2f}%")
+            print(f"  Attack Percentage: {results['total']['attack_percentage']:.2f}%")
     
     results_file = f"{model_name}_test_results.json"
     results_path = os.path.join(model_dir, results_file)

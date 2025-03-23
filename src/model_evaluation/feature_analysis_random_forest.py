@@ -1,102 +1,119 @@
+#!/usr/bin/env python3
+
+import os
+import glob
+import argparse
 import pandas as pd
 import numpy as np
-import joblib
-import shap
 import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
-from sklearn.ensemble import RandomForestClassifier
-import argparse
-import os
+from sklearn.tree import DecisionTreeClassifier
 
-def analyze_predictions(model, data, feature_names, model_name, csv_name):
-    predictions = model.predict(data)
-    binary_predictions = np.where(predictions == 1, 1, 0)
+def load_data_and_label(base_dir="session_dataset"):
+    """
+    Reads CSVs from subfolders 'normal', 'quicly', and 'lsquic' within base_dir.
+    Assigns a numeric label for each subfolder:
+      normal -> 0
+      quicly -> 1
+      lsquic -> 2
+    Returns a concatenated DataFrame with a 'Label' column.
+    """
+    folder_label_map = {
+        "normal": 0,
+        "quicly": 1,
+        "lsquic": 2
+    }
     
-    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf_model.fit(data, binary_predictions)
+    all_dfs = []
     
-    feature_importance = rf_model.feature_importances_
-    feature_importance_dict = dict(zip(feature_names, feature_importance))
-    sorted_features = dict(sorted(feature_importance_dict.items(), key=lambda x: abs(x[1]), reverse=True))
+    for folder_name, label_val in folder_label_map.items():
+        folder_path = os.path.join(base_dir, folder_name)
+        csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
+        
+        if not csv_files:
+            print(f"No CSV files found in {folder_path}")
+            continue
+        
+        for file_path in csv_files:
+            df = pd.read_csv(file_path)
+            # Assign label
+            df["Label"] = label_val
+            all_dfs.append(df)
     
-    plt.figure(figsize=(10, 6))
-    features = list(sorted_features.keys())[:20]
-    importances = [sorted_features[f] for f in features]
+    if not all_dfs:
+        raise ValueError(f"No data found in subfolders of {base_dir}")
     
-    plt.barh(range(len(features)), importances)
-    plt.yticks(range(len(features)), features)
-    plt.xlabel('Feature Importance')
-    plt.title('Top 20 Most Important Features')
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    return combined_df
+
+def plot_feature_importance(feature_names, importances, output_prefix="feature_importance"):
+    """
+    Makes a horizontal bar chart of feature importances (Decision Tree),
+    saving the figure to disk and also printing top 10 to console.
+    """
+    # Combine names & importances into a list of (feature, importance)
+    feat_imp_pairs = list(zip(feature_names, importances))
+    # Sort by absolute importance descending
+    feat_imp_pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+    
+    # Print top 10
+    print("\nTop 10 Most Important Features:")
+    for i, (fname, imp) in enumerate(feat_imp_pairs[:10], start=1):
+        print(f"{i}. {fname}: {imp:.4f}")
+    
+    # Plot top 20
+    top_20 = feat_imp_pairs[:20]
+    features_20 = [x[0] for x in top_20]
+    importance_20 = [x[1] for x in top_20]
+    
+    plt.figure(figsize=(8, 6))
+    plt.barh(range(len(features_20)), importance_20, color='skyblue')
+    plt.yticks(range(len(features_20)), features_20)
+    plt.gca().invert_yaxis()  # so the most important is at the top
+    plt.xlabel("Feature Importance")
+    plt.title("Top 20 Decision Tree Feature Importances")
     plt.tight_layout()
-    plt.savefig(f'feature_importance_{model_name}_{os.path.splitext(csv_name)[0]}.png')
-    plt.close()
     
-    return sorted_features
+    output_filename = f"{output_prefix}.png"
+    plt.savefig(output_filename, dpi=150)
+    plt.close()
+    print(f"Feature importance plot saved as '{output_filename}'")
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze feature importance using Random Forest')
-    parser.add_argument('--model-path', type=str, required=True,
-                       help='Path to model file relative to source directory')
-    parser.add_argument('--csv-file', type=str, required=True,
-                       help='Path to CSV file relative base directory')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-dir", type=str, default="session_dataset",
+                        help="Path to the base directory containing normal/quicly/lsquic subfolders.")
+    parser.add_argument("--output-prefix", type=str, default="decision_tree_importance",
+                        help="Prefix for the output plot/filenames.")
     args = parser.parse_args()
-
-    base_dir = "/home/philipp/Documents/Thesis"
-    model_full_path = os.path.join(base_dir+"/src", args.model_path)
-    csv_full_path = os.path.join(base_dir, args.csv_file)
     
-    model_name = os.path.splitext(os.path.basename(args.model_path))[0]
-    csv_name = os.path.basename(args.csv_file)
+    # 1. Load & label data
+    df = load_data_and_label(base_dir=/home/philipp/Documents/Thesis/session_Datasets)
+    print("Data loaded successfully.")
+    print(f"Total records: {len(df)}")
     
-    try:
-        model = joblib.load(model_full_path)
-        print(f"Model loaded successfully from {model_full_path}")
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        return
-
-    try:
-        df = pd.read_csv(csv_full_path)
-        feature_names = df.columns.tolist()
-        
-        imputer = SimpleImputer(strategy='mean')
-        X = imputer.fit_transform(df)
-        
-        predictions = model.predict(X)
-        normal_count = sum(predictions == 1)
-        attack_count = sum(predictions == -1)
-        total = len(predictions)
-        
-        print("\nPrediction Summary:")
-        print(f"Normal streams: {normal_count} ({normal_count/total*100:.2f}%)")
-        print(f"Attack streams: {attack_count} ({attack_count/total*100:.2f}%)")
-        
-        print("\nAnalyzing feature importance...")
-        feature_importance = analyze_predictions(model, X, feature_names, model_name, csv_name)
-        
-        print("\nTop 10 Most Important Features:")
-        for i, (feature, importance) in enumerate(list(feature_importance.items())[:10], 1):
-            print(f"{i}. {feature}: {abs(importance):.4f}")
-        
-        output_file = f'feature_importance_{model_name}_{os.path.splitext(csv_name)[0]}.txt'
-        output_dir = os.path.dirname(model_full_path)
-        with open(os.path.join(output_dir, output_file), 'w') as f:
-            f.write("Feature Importance Analysis\n")
-            f.write("=========================\n\n")
-            f.write(f"Analyzed file: {args.csv_file}\n")
-            f.write(f"Total streams: {total}\n")
-            f.write(f"Normal streams: {normal_count} ({normal_count/total*100:.2f}%)\n")
-            f.write(f"Attack streams: {attack_count} ({attack_count/total*100:.2f}%)\n\n")
-            f.write("Feature Importance Ranking:\n")
-            for feature, importance in feature_importance.items():
-                f.write(f"{feature}: {abs(importance):.4f}\n")
-        
-        print(f"\nDetailed results saved to {os.path.join(output_dir, output_file)}")
-        print(f"Feature importance plot saved as feature_importance_{model_name}_{os.path.splitext(csv_name)[0]}.png")
-        
-    except Exception as e:
-        print(f"Error during analysis: {e}")
-        return
+    # 2. Separate features & target
+    # We'll assume the label column is 'Label' and everything else is a feature:
+    target_col = "Label"
+    feature_cols = [c for c in df.columns if c != target_col]
+    
+    X_df = df[feature_cols]
+    y = df[target_col].values
+    
+    # 3. Handle missing values
+    imputer = SimpleImputer(strategy='mean')
+    X = imputer.fit_transform(X_df)
+    feature_names = X_df.columns.tolist()
+    
+    # 4. Train Decision Tree
+    clf = DecisionTreeClassifier(random_state=42)
+    clf.fit(X, y)
+    
+    # 5. Get feature importances
+    importances = clf.feature_importances_
+    
+    # 6. Plot & print feature importances
+    plot_feature_importance(feature_names, importances, output_prefix=args.output_prefix)
 
 if __name__ == "__main__":
     main()

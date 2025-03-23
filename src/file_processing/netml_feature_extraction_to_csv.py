@@ -5,68 +5,49 @@ from functools import reduce
 import re
 import numpy as np
 from sklearn.impute import SimpleImputer
+import argparse
 
 COMMON_FEATURES = None
 
-def extract_netml_features(pcap_file, common_features):
+def extract_netml_features(pcap_file):
     print(f"Reading PCAP file: {pcap_file}")
     base_dir = '/home/philipp/Documents/Thesis'
     pcap_dir = os.path.join(base_dir, "packet_capture")
     pcap_path = os.path.join(pcap_dir, pcap_file)
-    pcap = PCAP(pcap_path, flow_ptks_thres=2)
-    pcap.pcap2flows()
+    try:
+        pcap = PCAP(pcap_path, flow_ptks_thres=2)
+        pcap.pcap2flows()
 
-    feature_types = ['IAT', 'STATS', 'SIZE', 'SAMP_NUM', 'SAMP_SIZE']
-    feature_frames = []
+        feature_types = ['STATS']
+        feature_frames = []
 
-    for feature_type in feature_types:
-        pcap.flow2features(feature_type, fft=False, header=False)
-        df = pd.DataFrame(pcap.features)
-        df.columns = [f"{feature_type}_{col}" for col in df.columns]
-        feature_frames.append(df)
+        for feature_type in feature_types:
+            pcap.flow2features(feature_type, fft=False, header=False)
+            if pcap.features is not None:
+                df = pd.DataFrame(pcap.features)
+                df.columns = [f"{feature_type}_{col}" for col in df.columns]
+                feature_frames.append(df)
+            else:
+                print(f"No features extracted for {pcap_file} using {feature_type}")
+                return None
     
-    all_features = pd.concat(feature_frames, axis=1)
-    all_features = all_features[sorted(common_features)]
-    
-    return all_features
+        if feature_frames:
+            all_features = pd.concat(feature_frames, axis=1)
+            return all_features
+        else:
+            print(f"No feature frames to concatenate for {pcap_file}")
+            return None
 
-def determine_common_features(pcap_dir):
+    except (RuntimeError, IndexError) as e:
+        print(f"Error processing PCAP file {pcap_file}: {e}")
+        return None
+
+def process_pcap_file(pcap_dir, pcap_file, output_dir, prefix=None):
     global COMMON_FEATURES
-    
-    normal_stats_features = []
-    
-    for filename in os.listdir(pcap_dir):
-        if filename.startswith("normal_") and filename.endswith(".pcap"):
-            pcap_file = os.path.join(pcap_dir, filename)
-            try:
-                pcap = PCAP(pcap_file, flow_ptks_thres=2)
-                pcap.pcap2flows()
 
-                feature_types = ['IAT', 'STATS', 'SIZE', 'SAMP_NUM', 'SAMP_SIZE']
-                feature_frames = []
-
-                for feature_type in feature_types:
-                    pcap.flow2features(feature_type, fft=False, header=False)
-                    df = pd.DataFrame(pcap.features)
-                    df.columns = [f"{feature_type}_{col}" for col in df.columns]
-                    feature_frames.append(df)
-    
-                all_features = pd.concat(feature_frames, axis=1)
-                stats_features = {col for col in all_features.columns if col.startswith("STATS")}
-                normal_stats_features.append(stats_features)
-            except Exception as e:
-                print(f"Error processing file {filename}: {e}")
-    
-    if normal_stats_features:
-        COMMON_FEATURES = set.intersection(*normal_stats_features)
-    else:
-        COMMON_FEATURES = set()
-    
-    print(f"Common STATS features across all normal PCAP files: {len(COMMON_FEATURES)}")
-    return COMMON_FEATURES
-
-def process_pcap_file(pcap_dir, pcap_file, output_dir, attack_label):
-    global COMMON_FEATURES
+    if prefix and not pcap_file.startswith(prefix):
+        print(f"Skipping {pcap_file} as it does not start with prefix '{prefix}'.")
+        return
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -77,10 +58,13 @@ def process_pcap_file(pcap_dir, pcap_file, output_dir, attack_label):
     if os.path.exists(pcap_path):
         print(f"Processing file: {pcap_path}")
         try:
-            features_df = extract_netml_features(pcap_file, COMMON_FEATURES)
-            features_df = features_df.reindex(sorted(features_df.columns, key=lambda x: int("".join(filter(str.isdigit, x)))), axis=1)
-            features_df.to_csv(csv_file, index=False, header=True)
-            print(f"Features saved to {csv_file}")
+            features_df = extract_netml_features(pcap_file)
+            if features_df is not None:
+                features_df = features_df.reindex(sorted(features_df.columns, key=lambda x: int("".join(filter(str.isdigit, x)))), axis=1)
+                features_df.to_csv(csv_file, index=False, header=True)
+                print(f"Features saved to {csv_file}")
+            else:
+                print(f"No features extracted from {pcap_file}, skipping CSV creation.")
 
         except Exception as e:
             print(f"Error processing file {pcap_path}: {e}")
@@ -92,24 +76,16 @@ def main():
     pcap_dir = os.path.join(base_dir, "packet_capture")
     output_base_dir = os.path.join(base_dir, "session_Datasets")
     
-    attack_labels = {
-        "normal": 0,
-        "flooding": 1,
-        "slowloris": 2,
-        "quicly": 3,
-        "lsquic": 4
-    }
-
-    COMMON_FEATURES = determine_common_features(pcap_dir)
+    parser = argparse.ArgumentParser(description="Extract NetML features from PCAP files.")
+    parser.add_argument("--prefix", type=str, help="Process only files starting with this prefix.")
+    args = parser.parse_args()
 
     for filename in os.listdir(pcap_dir):
         if filename.endswith(".pcap"):
             scenario = filename.split('_')[0]
             output_dir = os.path.join(output_base_dir, scenario)
             
-            attack_label = attack_labels.get(scenario, -1)
-            
-            process_pcap_file(pcap_dir, filename, output_dir, attack_label)
+            process_pcap_file(pcap_dir, filename, output_dir, args.prefix)
 
 if __name__ == "__main__":
     main()

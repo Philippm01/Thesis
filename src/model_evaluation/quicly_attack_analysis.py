@@ -7,15 +7,32 @@ import numpy as np
 from sklearn.impute import SimpleImputer
 import argparse
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-import re
 
-def test_scenario(scenario_path, model, imputer, scaler, scenario_name):
+
+# python3 benchmarking_ocsvm.py --model-path ocsvm/one_class_svm_model.pkl --normal-start 90 --normal-end 91 --attack-start 1 --attack-end 1
+
+
+def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_range, attack_range):
     print(f"\n{'='*20} {scenario_name.upper()} {'='*20}")
     
     csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
     
-    valid_files = [f for f in csv_files if os.path.basename(f).startswith("quicly_attacks")]
+    file_numbers = []
+    for f in csv_files:
+        try:
+            num = int(f.split('it:')[1].split('.')[0])
+        except:
+            num = -1
+        file_numbers.append((f, num))
+    
+    file_numbers.sort(key=lambda x: x[1])
+    
+    if scenario_name == "normal":
+        start, end = normal_range
+        valid_files = [f for f, num in file_numbers if start <= num <= end]
+    else:
+        start, end = attack_range
+        valid_files = [f for f, num in file_numbers if start <= num <= end]
     
     if not valid_files:
         return None
@@ -28,19 +45,8 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name):
         "total": {"normal": 0, "attack": 0, "total": 0}
     }
     
-    attack_percentages = {}
-    
     for file in tqdm(valid_files, desc=f"Processing {scenario_name}"):
         try:
-            # Extract number of attacks from filename using regex
-            filename = os.path.basename(file)
-            match = re.search(r'quicly_attacks:(\d+)_time', filename)
-            if match:
-                num_attacks = int(match.group(1))
-            else:
-                print(f"Could not extract number of attacks from filename: {filename}")
-                continue
-            
             # Load and transform data using both imputer and scaler
             df = pd.read_csv(file)
             X_imputed = imputer.transform(df)
@@ -51,19 +57,13 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name):
             attack = int(sum(predictions == -1))
             total = len(predictions)
             
-            attack_percentage = float(attack/total*100)
-            
-            if num_attacks not in attack_percentages:
-                attack_percentages[num_attacks] = []
-            attack_percentages[num_attacks].append(attack_percentage)
-            
             file_result = {
                 "filename": os.path.basename(file),
                 "normal": normal,
                 "attack": attack,
                 "total": total,
                 "normal_percentage": float(normal/total*100),
-                "attack_percentage": attack_percentage
+                "attack_percentage": float(attack/total*100)
             }
             
             results["files"].append(file_result)
@@ -79,12 +79,16 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name):
         results["total"]["normal_percentage"] = float(results["total"]["normal"]/total*100)
         results["total"]["attack_percentage"] = float(results["total"]["attack"]/total*100)
     
-    return attack_percentages
+    return results
 
 def main():
     parser = argparse.ArgumentParser(description='Test OCSVM model with custom ranges')
     parser.add_argument('--model-path', type=str, required=True, 
                        help='Path to model file relative to /home/philipp/Documents/Thesis/src')
+    parser.add_argument('--normal-start', type=int, default=81)
+    parser.add_argument('--normal-end', type=int, default=100)
+    parser.add_argument('--attack-start', type=int, default=1)
+    parser.add_argument('--attack-end', type=int, default=20)
     args = parser.parse_args()
 
     base_src_dir = "/home/philipp/Documents/Thesis/src"
@@ -101,45 +105,41 @@ def main():
         print(f"Error loading model components: {e}")
         return
 
+    normal_range = (args.normal_start, args.normal_end)
+    attack_range = (args.attack_start, args.attack_end)
     base_dir = "/home/philipp/Documents/Thesis/session_Datasets"
-    scenario = "quicly"
-    scenario_path = os.path.join(base_dir, scenario)
+    scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
     
-    if not os.path.exists(scenario_path):
-        print(f"Directory of scenario not found: {scenario_path}")
-        return
-            
-    attack_percentages = test_scenario(scenario_path, model, imputer, scaler, 
-                              scenario)
-    
-    if attack_percentages:
-        # Calculate average attack percentage for each attack level
-        avg_attack_percentages = {
-            num_attacks: np.mean(percentages)
-            for num_attacks, percentages in attack_percentages.items()
+    all_results = {
+        "scenarios": [],
+        "test_ranges": {
+            "normal": {"start": args.normal_start, "end": args.normal_end},
+            "attack": {"start": args.attack_start, "end": args.attack_end}
         }
-        
-        # Prepare data for plotting
-        num_attacks_list = sorted(avg_attack_percentages.keys())
-        avg_percentages_list = [avg_attack_percentages[k] for k in num_attacks_list]
-        
-        # Generate plot
-        plt.figure(figsize=(10, 6))
-        plt.plot(num_attacks_list, avg_percentages_list, marker='o')
-        plt.title('Average Attack Percentage vs. Number of Attacks (Quicly)')
-        plt.xlabel('Number of Attacks')
-        plt.ylabel('Average Attack Percentage')
-        plt.grid(True)
-        
-        # Save plot
-        plot_file = f"{model_name}_quicly_attack_plot.png"
-        plot_path = os.path.join(model_dir, plot_file)
-        plt.savefig(plot_path)
-        plt.close()
-        
-        print(f"\nPlot saved to {plot_path}")
-    else:
-        print("No results to plot.")
+    }
+    
+    for scenario in scenarios:
+        scenario_path = os.path.join(base_dir, scenario)
+        if not os.path.exists(scenario_path):
+            print(f"Directory of scenario not found: {scenario_path}")
+            continue
+            
+        results = test_scenario(scenario_path, model, imputer, scaler, 
+                              scenario, normal_range, attack_range)
+        if results:
+            all_results["scenarios"].append(results)
+    
+    # Save results
+    results_file = f"{model_name}_test_results.json"
+    results_path = os.path.join(model_dir, results_file)
+    
+    if os.path.exists(results_path):
+        os.remove(results_path)
+    
+    with open(results_path, 'w') as f:
+        json.dump(all_results, f, indent=4)
+    
+    print(f"\nResults saved to {results_path}")
 
 if __name__ == "__main__":
     main()

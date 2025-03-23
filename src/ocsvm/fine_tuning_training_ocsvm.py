@@ -84,19 +84,15 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name, file_pre
     
     return results
 
-nu_values = [0.001, 0.01, 0.05, 0.1, 0.5]
-gamma_values = ['scale', 'auto', 0.01, 0.001, 0.0001, 0.00001]
+nu_values = [0.001, 0.01,  0.1, 0.5]
+gamma_values = ['scale', 'auto', 0.01, 0.001, 0.00001]
 scaling_methods = [
     ('none', None),
     ('standard', StandardScaler()),
     ('minmax', MinMaxScaler())
 ]
 
-# Path to normal traffic dataset
 dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/normal/*.csv"
-#dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/quicly/*.csv"
-#dataset_path2 = "/home/philipp/Documents/Thesis/session_Datasets/lsquic/*.csv"
-#dataset_path3 = "/home/philipp/Documents/Thesis/session_Datasets/slowloris/*.csv"
 
 csv_files = glob.glob(dataset_path)
 training_files = csv_files[:20]
@@ -125,9 +121,9 @@ all_results = {
 }
 
 file_prefixes = {
-    "slowloris": "slowloris_isolated_con:5-10_sleep:1-5_time:180",
-    "quicly": "quicly_isolation_time:180",
-    "lsquic": "lsquic_isolated_time:180"
+    "slowloris": "slowloris_isolated",
+    "quicly": "quicly_isolation",
+    "lsquic": "lsquic_isolation"
 }
 
 for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scaling_methods):
