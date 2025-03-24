@@ -35,8 +35,7 @@ print(f"Loaded {len(X_train)} normal NetML flow entries for training")
 
 iforest = IsolationForest(
     n_estimators=100,
-    contamination=0.001,  
-    max_samples='auto',
+    contamination=0.01,  
     random_state=42
 )
 iforest.fit(X_train)

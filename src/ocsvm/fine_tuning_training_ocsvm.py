@@ -121,9 +121,9 @@ all_results = {
 }
 
 file_prefixes = {
-    "slowloris": "slowloris_isolated",
-    "quicly": "quicly_isolation",
-    "lsquic": "lsquic_isolation"
+    "slowloris": "slowloris_isolated_con:5-10_sleep:1-5_time:100_it:",
+    "quicly": "quicly_isolation_time:100_it:",
+    "lsquic": "lsquic_isolation_time:100_it:"
 }
 
 for nu, gamma, (scaling_name, scaler) in product(nu_values, gamma_values, scaling_methods):

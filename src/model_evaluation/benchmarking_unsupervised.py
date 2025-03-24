@@ -9,8 +9,6 @@ import argparse
 from tqdm import tqdm
 
 def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_range, attack_range, file_prefix=None):
-    print(f"\n{'='*20} {scenario_name.upper()} {'='*20}")
-    
     csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
     
     file_numbers = []
@@ -98,7 +96,7 @@ def main():
         return
 
     normal_range = (81, 100)
-    attack_range = (1, 20)
+    attack_range = (1, 100)
     base_dir = "/home/philipp/Documents/Thesis/session_Datasets"
     scenarios = ["normal", "flood", "slowloris", "quicly", "lsquic"]
     
@@ -106,7 +104,7 @@ def main():
         "scenarios": [],
         "test_ranges": {
             "normal": {"start": 81, "end": 100},
-            "attack": {"start": 1, "end": 20}
+            "attack": {"start": 1, "end": 100}
         }
     }
     
@@ -118,11 +116,11 @@ def main():
         
         file_prefix = None
         if scenario == "slowloris":
-            file_prefix = "slowloris_isolated_con:5-10_sleep:1-5_time:180"
+            file_prefix = "slowloris_isolated_con:5-10_sleep:1-5_time:100_it:"
         elif scenario == "quicly":
-            file_prefix = "quicly_isolation"
+            file_prefix = "quicly_isolation_time:100_it:"
         elif scenario == "lsquic":
-            file_prefix = "lsquic_isolation"
+            file_prefix = "lsquic_isolation_time:100_it:"
             
         results = test_scenario(scenario_path, model, imputer, scaler, 
                               scenario, normal_range, attack_range, file_prefix)
