@@ -3,7 +3,8 @@ import glob
 import os
 import json
 import joblib
-from sklearn.ensemble import GradientBoostingClassifier
+import gc
+from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report
@@ -44,48 +45,65 @@ for scenario in scenarios:
 
 data = pd.concat(dataframes, ignore_index=True)
 
+# Free memory after data loading
+del dataframes
+gc.collect()
+
+# Optimize memory usage
+def optimize_memory_usage(df):
+    for col in df.columns:
+        if df[col].dtype == 'float64':
+            df[col] = df[col].astype('float32')
+        elif df[col].dtype == 'int64':
+            df[col] = df[col].astype('int32')
+        elif df[col].dtype == 'object':
+            df[col] = df[col].astype('category')
+    return df
+
+data = optimize_memory_usage(data)
+
 X = data.drop(columns=['label'])
 y = data['label']
+
+del data
+gc.collect()
 
 imputer = SimpleImputer(strategy='mean')
 X_imputed = imputer.fit_transform(X)
 X_train, X_test, y_train, y_test = train_test_split(X_imputed, y, test_size=0.2, random_state=42, stratify=y)
 
+del X_imputed, X, y
+gc.collect()
+
 param_grid = {
     'n_estimators': [100, 200, 300],
-    'learning_rate': [0.01, 0.1, 0.2],
-    'max_depth': [3, 6, 10],
-    'min_samples_split': [2, 5, 10],
-    'min_samples_leaf': [1, 2, 4]
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5],
+    'min_samples_leaf': [1, 2]
 }
 
-gb_clf = GradientBoostingClassifier(random_state=42)
-grid_search = GridSearchCV(estimator=gb_clf, param_grid=param_grid,
-                           cv=3, n_jobs=-1, verbose=2,
-                           scoring='f1_macro')
+etc = ExtraTreesClassifier(random_state=42)
+grid_search = GridSearchCV(estimator=etc, param_grid=param_grid,
+                           cv=3, n_jobs=-1, verbose=2, scoring='f1_macro')
 
 print("\nStarting Grid Search...")
 grid_search.fit(X_train, y_train)
 print("Best parameters found:")
 print(grid_search.best_params_)
 
+del X_train, y_train
+gc.collect()
+
 print("\nEvaluating best model on test set...")
 y_pred = grid_search.predict(X_test)
-report = classification_report(y_test, y_pred,
-                               target_names=['Normal', 'Slowloris', 'Quicly', 'LSQUIC'])
+report = classification_report(y_test, y_pred, target_names=['Normal', 'Slowloris', 'Quicly', 'LSQUIC'])
 print("Classification Report:")
 print(report)
 
-model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gradient_boosting_model")
+model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extratrees_model")
 os.makedirs(model_dir, exist_ok=True)
-model_path = os.path.join(model_dir, "gb_best_model.pkl")
+model_path = os.path.join(model_dir, "extratrees_best_model.pkl")
 imputer_path = os.path.join(model_dir, "imputer.pkl")
-params_path = os.path.join(model_dir, "best_parameters.txt")
-
-with open(params_path, 'w') as f:
-    f.write("Best Gradient Boosting Parameters:\n")
-    for param, value in grid_search.best_params_.items():
-        f.write(f"{param}: {value}\n")
 
 joblib.dump(grid_search.best_estimator_, model_path)
 joblib.dump(imputer, imputer_path)
@@ -95,7 +113,7 @@ results = {
     "classification_report": report
 }
 
-results_path = os.path.join(model_dir, "gb_results.json")
+results_path = os.path.join(model_dir, "etc_results.json")
 with open(results_path, 'w') as f:
     json.dump(results, f, indent=4)
 

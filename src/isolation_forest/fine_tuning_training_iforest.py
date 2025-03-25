@@ -1,6 +1,6 @@
 import pandas as pd
 import glob
-from sklearn.ensemble import IsolationForest
+from sklearn.ensemble import IsolationForest  # Add this import
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import joblib
@@ -19,7 +19,7 @@ def load_csv_files(file_paths):
             print(f"Error loading {file}: {e}")
     return dataframes
 
-def test_scenario(scenario_path, model, scaler, imputer, scenario_name, file_prefix=None, normal_test=False):
+def test_scenario(scenario_path, model, scaler, imputer, scenario_name):
     csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
     
     file_numbers = []
@@ -31,14 +31,7 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name, file_pre
             continue
     
     file_numbers.sort(key=lambda x: x[1])
-    
-    if normal_test:
-        valid_files = [f for f, num in file_numbers if 81 <= num <= 100]
-    else:
-        valid_files = [f for f, num in file_numbers if 1 <= num <= 50]
-
-    if file_prefix:
-        valid_files = [f for f in valid_files if os.path.basename(f).startswith(file_prefix)]
+    valid_files = [f for f, num in file_numbers if 1 <= num <= 50]
     
     if not valid_files:
         return None
@@ -84,8 +77,9 @@ def test_scenario(scenario_path, model, scaler, imputer, scenario_name, file_pre
     
     return results
 
-contamination_values = [0.001, 0.01, 0.1, 0.2]
-n_estimators_values = [100, 200, 500]
+contamination_values = [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2]
+n_estimators_values = [100, 200, 500, 1000]
+max_samples_values = [10000] 
 scaling_methods = [
     ('none', None),
     ('standard', StandardScaler()),
@@ -94,7 +88,8 @@ scaling_methods = [
 
 dataset_path = "/home/philipp/Documents/Thesis/session_Datasets/normal/*.csv"
 csv_files = glob.glob(dataset_path)
-training_files = csv_files[:20]  # Match OCSVM training size
+training_files = csv_files[:10]
+print(f"Using {len(training_files)} files for training")
 
 dataframes = load_csv_files(training_files)
 if not dataframes:
@@ -118,17 +113,14 @@ all_results = {
     "models": []
 }
 
-
-file_prefixes = {
-    "slowloris": "slowloris_isolated_con:5-10_sleep:1-5_time:100_it:",
-    "quicly": "quicly_isolation_time:100_it:",
-    "lsquic": "lsquic_isolation_time:100_it:"
-}
-
-for cont, n_est, (scaling_name, scaler) in product(contamination_values, n_estimators_values, scaling_methods):
-    model_name = f"iforest_cont{cont}_est{n_est}_{scaling_name}".replace(".", "")
+for cont, n_est, max_samp, (scaling_name, scaler) in product(
+    contamination_values, n_estimators_values, 
+    max_samples_values, scaling_methods):
+    
+    model_name = f"iforest_cont{cont}_est{n_est}_samp{max_samp}_{scaling_name}".replace(".", "")
     print(f"\nTraining model: {model_name}")
-    print(f"Parameters: contamination={cont}, n_estimators={n_est}, scaling={scaling_name}")
+    print(f"Parameters: contamination={cont}, n_estimators={n_est}, "
+          f"max_samples={max_samp}, scaling={scaling_name}")
     
     X_train_scaled = X_train
     if scaler is not None:
@@ -137,6 +129,7 @@ for cont, n_est, (scaling_name, scaler) in product(contamination_values, n_estim
     iforest = IsolationForest(
         contamination=cont,
         n_estimators=n_est,
+        max_samples=max_samp,
         random_state=42
     )
     iforest.fit(X_train_scaled)
@@ -151,15 +144,15 @@ for cont, n_est, (scaling_name, scaler) in product(contamination_values, n_estim
         scaler_path = os.path.join(models_dir, f"{model_name}_scaler.pkl")
         joblib.dump(scaler, scaler_path)
 
-    print("\nTesting model on all scenarios...")
     base_dir = "/home/philipp/Documents/Thesis"
-    scenarios = ["normal", "slowloris", "quicly", "lsquic"]
+    scenarios = ["normal", "flooding", "slowloris", "quicly", "lsquic"]
     
     model_results = {
         "model_name": model_name,
         "parameters": {
             "contamination": cont,
             "n_estimators": n_est,
+            "max_samples": max_samp,
             "scaling": scaling_name
         },
         "scenarios": []
@@ -167,21 +160,17 @@ for cont, n_est, (scaling_name, scaler) in product(contamination_values, n_estim
     
     for scenario in scenarios:
         scenario_path = os.path.join(base_dir, "session_Datasets", scenario)
-        if not os.path.exists(scenario_path):
-            print(f"Directory not found: {scenario_path}")
-            continue
-        
-        file_prefix = file_prefixes.get(scenario)
-        normal_test = (scenario == "normal")
-        results = test_scenario(scenario_path, iforest, scaler, imputer, scenario, file_prefix, normal_test)
-        if results:
-            model_results["scenarios"].append(results)
+        if os.path.exists(scenario_path):
+            results = test_scenario(scenario_path, iforest, scaler, imputer, scenario)
+            if results:
+                model_results["scenarios"].append(results)
     
     all_results["models"].append(model_results)
     
     print(f"Model complete: {model_name}")
     for scenario in model_results["scenarios"]:
-        print(f"{scenario['scenario']}: Normal={scenario['total']['normal_percentage']:.2f}%, Attack={scenario['total']['attack_percentage']:.2f}%")
+        print(f"{scenario['scenario']}: Normal={scenario['total']['normal_percentage']:.2f}%, "
+              f"Attack={scenario['total']['attack_percentage']:.2f}%")
 
 results_file = os.path.join(script_dir, "complete_grid_search_results.json")
 with open(results_file, 'w') as f:
@@ -189,13 +178,3 @@ with open(results_file, 'w') as f:
 
 print(f"\nAll results saved to {results_file}")
 print(f"Models saved in: {models_dir}")
-
-with open(os.path.join(models_dir, "models_info.txt"), "w") as f:
-    f.write("Isolation Forest Models Training Summary\n")
-    f.write("====================================\n\n")
-    f.write(f"Training samples: {len(X_train)}\n")
-    f.write(f"Training files used: {len(training_files)}\n\n")
-    f.write("Models created:\n")
-    for cont, n_est, (scaling_name, _) in product(contamination_values, n_estimators_values, scaling_methods):
-        f.write(f"\n- contamination={cont}, n_estimators={n_est}, scaling={scaling_name}")
-        f.write(f"\n  Model name: iforest_cont{cont}_est{n_est}_{scaling_name}".replace(".", ""))
