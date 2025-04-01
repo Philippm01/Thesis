@@ -1,145 +1,62 @@
 import pandas as pd
 import glob
-import os
 import joblib
-import json
-import numpy as np
-from sklearn.impute import SimpleImputer
+import os
 import argparse
-from tqdm import tqdm
+from collections import Counter
 
-def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_range, attack_range, file_prefix=None):
-    csv_files = glob.glob(os.path.join(scenario_path, "*.csv"))
-    
-    file_numbers = []
-    for f in csv_files:
-        try:
-            num = int(f.split('it:')[1].split('.')[0])
-        except:
-            num = -1
-        file_numbers.append((f, num))
-    
-    file_numbers.sort(key=lambda x: x[1])
-    
-    if scenario_name == "normal":
-        start, end = normal_range
-        valid_files = [f for f, num in file_numbers if start <= num <= end]
-    else:
-        start, end = attack_range
-        valid_files = [f for f, num in file_numbers if start <= num <= end]
+parser = argparse.ArgumentParser(description="...")
+parser.add_argument('--model_dir', type=str, required=True, help="P...")
+args = parser.parse_args()
 
-    if file_prefix:
-        valid_files = [f for f in valid_files if os.path.basename(f).startswith(file_prefix)]
-    
-    if not valid_files:
-        return None
+model = joblib.load(os.path.join(args.model_dir, "...pkl"))
+imputer = joblib.load(os.path.join(args.model_dir, "imputer.pkl"))
+scaler = joblib.load(os.path.join(args.model_dir, "scaler.pkl"))
 
-    print(f"Processing {len(valid_files)} files...")
-    
-    results = {
-        "scenario": scenario_name,
-        "files": [],
-        "total": {"normal": 0, "attack": 0, "total": 0}
-    }
-    
-    for file in tqdm(valid_files, desc=f"Processing {scenario_name}"):
-        try:
-            df = pd.read_csv(file)
-            X_imputed = imputer.transform(df)
-            X = scaler.transform(X_imputed)
-            
-            predictions = model.predict(X)
-            normal = int(sum(predictions == 1))
-            attack = int(sum(predictions == -1))
-            total = len(predictions)
-            
-            file_result = {
-                "filename": os.path.basename(file),
-                "normal": normal,
-                "attack": attack,
-                "total": total,
-                "normal_percentage": float(normal/total*100),
-                "attack_percentage": float(attack/total*100)
-            }
-            
-            results["files"].append(file_result)
-            results["total"]["normal"] += normal
-            results["total"]["attack"] += attack
-            results["total"]["total"] += total
-            
-        except Exception as e:
-            print(f"\nError processing {file}: {e}")
-    
-    if results["total"]["total"] > 0:
-        total = results["total"]["total"]
-        results["total"]["normal_percentage"] = float(results["total"]["normal"]/total*100)
-        results["total"]["attack_percentage"] = float(results["total"]["attack"]/total*100)
-    
-    return results
+scenario_config = {
+    "normal": {"label": 0, "prefix": None},
+    "flood": {"label": 1, "prefix": None},  
+    "slowloris": {"label": 1, "prefix": "slowloris_isolated_con:5-10_sleep:1-5_time:100_it:"},
+    "quicly": {"label": 2, "prefix": "quicly_isolation_time:100_it:"},
+    "lsquic": {"label": 3, "prefix": "lsquic_isolation_time:100_it:"}
+}
 
-def main():
-    parser = argparse.ArgumentParser(description='Test models')
-    parser.add_argument('--model-path', type=str, required=True, 
-                       help='Path to model file relative to /home/philipp/Documents/Thesis/src')
-    args = parser.parse_args()
+def summarize_predictions(scenario_config, base_path):
+    summaries = {}
 
-    model_dir = os.path.dirname(args.model_path)
-    model_name = os.path.splitext(os.path.basename(args.model_path))[0]
+    for scenario, config in scenario_config.items():
+        prefix = config['prefix']
+        pattern = f"**/{prefix}*.csv" if prefix else "**/*.csv"
+        file_paths = glob.glob(os.path.join(base_path, pattern), recursive=True)
+        if scenario == "normal":
+            file_paths = [f for f in file_paths if "it:" in f and 81 <= int(f.split("it:")[1].split(".")[0]) <= 100]
 
-    try:
-        model = joblib.load(args.model_path)
-        imputer = joblib.load(os.path.join(model_dir, "imputer.pkl"))
-        scaler = joblib.load(os.path.join(model_dir, "scaler.pkl"))
-        print(f"Model loaded successfully")
-    except Exception as e:
-        print(f"Error loading model components: {e}")
-        return
-
-    normal_range = (81, 100)
-    attack_range = (1, 100)
-    base_dir = "/home/philipp/Documents/Thesis/session_Datasets"
-    scenarios = ["normal", "flood", "slowloris", "quicly", "lsquic"]
-    
-    all_results = {
-        "scenarios": [],
-        "test_ranges": {
-            "normal": {"start": 81, "end": 100},
-            "attack": {"start": 1, "end": 100}
-        }
-    }
-    
-    for scenario in scenarios:
-        scenario_path = os.path.join(base_dir, scenario)
-        if not os.path.exists(scenario_path):
-            print(f"scenario not found: {scenario_path}")
+        if not file_paths:
+            print(f"No files found for scenario '{scenario}'")
             continue
-        
-        file_prefix = None
-        if scenario == "slowloris":
-            file_prefix = "slowloris_isolated_con:5-10_sleep:1-5_time:100_it:"
-        elif scenario == "quicly":
-            file_prefix = "quicly_isolation_time:100_it:"
-        elif scenario == "lsquic":
-            file_prefix = "lsquic_isolation_time:100_it:"
-            
-        results = test_scenario(scenario_path, model, imputer, scaler, 
-                              scenario, normal_range, attack_range, file_prefix)
-        if results:
-            all_results["scenarios"].append(results)
-            print(f"\n{scenario.upper()} SUMMARY:")
-            print(f"  Normal Percentage: {results['total']['normal_percentage']:.2f}%")
-            print(f"  Attack Percentage: {results['total']['attack_percentage']:.2f}%")
-    
-    results_file = f"{model_name}_test_results.json"
-    results_path = os.path.join(model_dir, results_file)
-    
-    if os.path.exists(results_path):
-        os.remove(results_path)
-    
-    with open(results_path, 'w') as f:
-        json.dump(all_results, f, indent=4)
-    
-    print(f"\nResult saved to {results_path}")
 
-if __name__ == "__main__":
-    main()
+        dfs = [pd.read_csv(file) for file in file_paths]
+        data = pd.concat(dfs, ignore_index=True)
+
+        X_test = scaler.transform(imputer.transform(data))
+        predictions = model.predict(X_test)
+
+        pred_counts = Counter(predictions)
+        total_predictions = sum(pred_counts.values())
+        attack_percentage = (pred_counts.get(-1, 0) / total_predictions) * 100
+        normal_percentage = (pred_counts.get(1, 0) / total_predictions) * 100
+
+        summaries[scenario] = {
+            "attack_percentage": attack_percentage,
+            "normal_percentage": normal_percentage
+        }
+
+        print(f"Scenario '{scenario}':")
+        print(f"  Attack Percentage: {attack_percentage:.2f}%")
+        print(f"  Normal Percentage: {normal_percentage:.2f}%")
+
+    return summaries
+
+base_dataset_path = "/home/philipp/Documents/Thesis/session_Datasets"
+
+summarize_predictions(scenario_config, base_dataset_path)

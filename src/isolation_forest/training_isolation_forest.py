@@ -28,20 +28,20 @@ df_normal = pd.concat(dataframes, ignore_index=True)
 imputer = SimpleImputer(strategy='mean')
 X_imputed = imputer.fit_transform(df_normal)
 
-scaler = StandardScaler()
+scaler = StandardScaler()  
 X_train = scaler.fit_transform(X_imputed)
 
 print(f"Loaded {len(X_train)} normal NetML flow entries for training")
 
 iforest = IsolationForest(
-    n_estimators=100,
-    contamination=0.01,  
+    n_estimators=100,  
+    contamination=0.001,  
     random_state=42
 )
 iforest.fit(X_train)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(script_dir, "isolation_forest_model.pkl")
+model_path = os.path.join(script_dir, "isolation_forest_model.pkl") 
 imputer_path = os.path.join(script_dir, "imputer.pkl")
 scaler_path = os.path.join(script_dir, "scaler.pkl")
 

@@ -66,7 +66,7 @@ display_labels = ['Normal', 'Slowloris', 'Quicly', 'LSQUIC']
 
 plt.figure(figsize=(8, 6))
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=display_labels, yticklabels=display_labels)
-plt.title(args.caption)  # Use the custom caption argument
+plt.title(args.caption)  
 plt.xlabel('Predicted Labels')
 plt.ylabel('True Labels')
 plt.tight_layout()
