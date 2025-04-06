@@ -47,7 +47,6 @@ def test_scenario(scenario_path, model, imputer, scaler, scenario_name, normal_r
     
     for file in tqdm(valid_files, desc=f"Processing {scenario_name}"):
         try:
-            # Load and transform data using both imputer and scaler
             df = pd.read_csv(file)
             X_imputed = imputer.transform(df)
             X = scaler.transform(X_imputed)
@@ -95,7 +94,6 @@ def main():
     model_dir = os.path.dirname(os.path.join(base_src_dir, args.model_path))
     model_name = os.path.splitext(os.path.basename(args.model_path))[0]
     
-    # Load model, imputer and scaler
     try:
         model = joblib.load(os.path.join(base_src_dir, args.model_path))
         imputer = joblib.load(os.path.join(model_dir, "imputer.pkl"))
@@ -129,13 +127,11 @@ def main():
         if results:
             all_results["scenarios"].append(results)
     
-    # Save results
+
     results_file = f"{model_name}_test_results.json"
     results_path = os.path.join(model_dir, results_file)
-    
     if os.path.exists(results_path):
-        os.remove(results_path)
-    
+        os.remove(results_path) 
     with open(results_path, 'w') as f:
         json.dump(all_results, f, indent=4)
     

@@ -10,14 +10,6 @@ from sklearn.impute import SimpleImputer
 from sklearn.tree import DecisionTreeClassifier
 
 def load_data_and_label(base_dir="session_dataset"):
-    """
-    Reads CSVs from subfolders 'normal', 'quicly', and 'lsquic' within base_dir.
-    Assigns a numeric label for each subfolder:
-      normal -> 0
-      quicly -> 1
-      lsquic -> 2
-    Returns a concatenated DataFrame with a 'Label' column.
-    """
     folder_label_map = {
         "normal": 0,
         "quicly": 1,
@@ -36,7 +28,6 @@ def load_data_and_label(base_dir="session_dataset"):
         
         for file_path in csv_files:
             df = pd.read_csv(file_path)
-            # Assign label
             df["Label"] = label_val
             all_dfs.append(df)
     
@@ -47,21 +38,13 @@ def load_data_and_label(base_dir="session_dataset"):
     return combined_df
 
 def plot_feature_importance(feature_names, importances, output_prefix="feature_importance"):
-    """
-    Makes a horizontal bar chart of feature importances (Decision Tree),
-    saving the figure to disk and also printing top 10 to console.
-    """
-    # Combine names & importances into a list of (feature, importance)
+
     feat_imp_pairs = list(zip(feature_names, importances))
-    # Sort by absolute importance descending
     feat_imp_pairs.sort(key=lambda x: abs(x[1]), reverse=True)
-    
-    # Print top 10
+
     print("\nTop 10 Most Important Features:")
     for i, (fname, imp) in enumerate(feat_imp_pairs[:10], start=1):
         print(f"{i}. {fname}: {imp:.4f}")
-    
-    # Plot top 20
     top_20 = feat_imp_pairs[:20]
     features_20 = [x[0] for x in top_20]
     importance_20 = [x[1] for x in top_20]

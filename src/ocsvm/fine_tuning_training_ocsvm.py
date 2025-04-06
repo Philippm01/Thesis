@@ -107,7 +107,6 @@ X_train = imputer.fit_transform(df_normal)
 
 print(f"Loaded {len(X_train)} NetML flow entries for training")
 
-# Create output directory for models
 script_dir = os.path.dirname(os.path.abspath(__file__))
 models_dir = os.path.join(script_dir, "grid_search_models")
 os.makedirs(models_dir, exist_ok=True)

@@ -39,19 +39,8 @@ def create_default_http3_frame():
 def ensure_three_elements(lst):
     return (lst + [np.nan] * 3)[:3]
 
-def determine_attack_type(quic_frames, http3_frames):
-    for frame in quic_frames:
-        if 0x1C in frame.get("Frame Types", []) and 0x06 in frame.get("Frame Types", []):
-            return 1
-    for frame in http3_frames:
-        if frame.get("Settings Max Table Capacity") > 4096:
-            return 2
-    for frame in quic_frames:
-        if 0x01 in frame.get("Frame Types", []):
-            return 3
-    return 0
 
-def extract_packet_features(file_path, attack_label):
+def extract_packet_features(file_path):
     MAX_QUIC_FRAMES = 2
     MAX_HTTP3_FRAMES = 4
     
@@ -62,6 +51,11 @@ def extract_packet_features(file_path, attack_label):
     prev_time = None
 
     for packet in data:
+        try:
+            attack_type = int(str(packet.get("Attack Type", "0")))
+        except ValueError:
+            attack_type = 6
+        
         quic_frames = packet.get("QUIC Frames", [])
         http3_frames = packet.get("HTTP3 Frames", [])
         if len(quic_frames) > MAX_QUIC_FRAMES or len(http3_frames) > MAX_HTTP3_FRAMES:
@@ -95,15 +89,11 @@ def extract_packet_features(file_path, attack_label):
         while len(processed_http3_frames) < MAX_HTTP3_FRAMES:
             processed_http3_frames.append(create_default_http3_frame())
 
-        attack_type = determine_attack_type(processed_quic_frames, processed_http3_frames)
-
         packet_info = {
-            "Packet Number": int(packet["Packet Number"]),
             "Packet Length": int(packet["Packet Length"]),
             "Interarrival Time": interarrival_time,
             "Num QUIC Frames": len(quic_frames),
             "Num HTTP3 Frames": len(http3_frames),
-            "Attack Type": attack_type
         }
 
         for i in range(MAX_QUIC_FRAMES):
@@ -127,13 +117,20 @@ def extract_packet_features(file_path, attack_label):
                 f"HTTP3_Frame_{i+1}_Settings_Capacity": http3_frame["Settings Max Table Capacity"]
             })
 
+        packet_info["Attack Type"] = attack_type
+
         packets.append(packet_info)
 
-    return pd.DataFrame(packets)
+    df = pd.DataFrame(packets)
+    df = df.fillna(0)
+    expected_columns = create_empty_packet_df().columns.tolist()
+    df = df.reindex(columns=expected_columns)
+    
+    return df
 
 def create_empty_packet_df():
     columns = [
-        "Packet Number", "Packet Length", "Interarrival Time",
+        "Packet Length", "Interarrival Time",
         "Num QUIC Frames", "Num HTTP3 Frames"
     ]
     
@@ -166,69 +163,44 @@ def initialize_csv_files():
 def append_to_csv(df, filename):
     df.to_csv(filename, mode='a', header=False, index=False)
 
-def process_scenario(attack_type, pattern, base_dir, start_it, end_it):
-    files = get_all_files_for_scenario(base_dir, pattern, start_it, end_it)
+def process_all_json_files(base_dir):
+    json_dir = os.path.join(base_dir, "result_files")
+    json_files = [f for f in os.listdir(json_dir) if f.endswith(".json")]
     packet_count = 0
-    
-    print(f"\nProcessing {attack_type} scenario...")
-    
-    for json_file, _ in files:
-        iteration = json_file.split("_it:")[1].split(".")[0]
-        print(f"Processing iteration {iteration}")
-        
+
+    print(f"\nProcessing all JSON files in {json_dir}...")
+
+    for json_file in json_files:
+        file_path = os.path.join(json_dir, json_file)
+        print(f"Processing file: {json_file}")
+
         try:
-            packet_features = extract_packet_features(json_file, attack_type)
+            packet_features = extract_packet_features(file_path)
+            
+            if "Attack Type" in packet_features.columns:
+                print(f"Attack Type column exists with values: {packet_features['Attack Type'].value_counts().to_dict()}")
+            else:
+                print("Attack Type column is missing!")
+            
             append_to_csv(packet_features, "all_iterations_quic_packets.csv")
             packet_count += len(packet_features)
-            
+
             del packet_features
-            
+
         except Exception as e:
-            print(f"Error processing iteration {iteration}: {e}")
+            print(f"Error processing file {json_file}: {e}")
             continue
-            
+
     return packet_count
 
-def get_all_files_for_scenario(base_dir, scenario_pattern, start_iteration, end_iteration):
-    json_files = []
-    
-    for i in range(start_iteration, end_iteration + 1):
-        json_file = os.path.join(base_dir, "result_files", f"{scenario_pattern}_it:{i}.json")
-        
-        if os.path.exists(json_file):
-            json_files.append(json_file)
-        else:
-            print(f"file missing in iteration {i}")
-    
-    return [(json_file, None) for json_file in json_files]
-
 def main():
-    scenarios = {
-        "normal": "normal_time:180",
-        "flooding": "flood_con:20-50_time:180",
-        "slowloris": "slowloris_con:5-10_sleep:20-40_time:180",
-        "quicly": "quicly_time:180",
-        "lsquic": "lsquic_time:180"
-    }
-    
     base_dir = '/home/philipp/Documents/Thesis'
-    start_iteration = 1  
-    end_iteration = 100  
     total_packets = 0
-    
+
     initialize_csv_files()
-    
-    for attack_type, pattern in scenarios.items():
-        packets = process_scenario(
-            attack_type, 
-            pattern, 
-            base_dir, 
-            start_it=start_iteration, 
-            end_it=end_iteration
-        )
-        total_packets += packets
-        print(f"Completed {attack_type}: {packets} packets")
-    
+
+    total_packets = process_all_json_files(base_dir)
+
     print("\nFinal Statistics:")
     print(f"Total packets processed: {total_packets}")
 
